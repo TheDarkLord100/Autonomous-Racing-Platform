@@ -1,0 +1,26 @@
+gap_follow_node:
+  ros__parameters:
+    max_range: 4.0          # clip lidar beyond this (m)
+    bubble_radius: 0.35     # safety bubble around closest point (m)
+    min_gap_points: 5       # ignore gaps smaller than this many beams
+    max_speed: 4.0          # m/s, straight-line cap
+    min_speed: 1.0          # m/s, sharp-turn floor
+    fov_deg: 180.0           # field of view considered, centered on front
+    car_width: 0.30          # actual physical car width (m) -- match your chassis
+    disparity_threshold: 0.3 # (m) beam-to-beam jump that triggers disparity extension
+    gap_edge_margin: 0.7    # (m) extra clearance trimmed off each gap edge beyond car half-width
+    speed_scale_angle_deg: 20.0  # steering angle (deg) at which speed hits min_speed -- lower = slows down earlier for turns
+    center_gain: 0.35        # (rad per meter of left/right wall imbalance) strength of centering pull
+    center_blend_angle_deg: 15.0  # FTG steering angle (deg) at which centering influence fades to zero
+    side_probe_window_deg: 8.0    # (deg) angular window around +-90 deg used to sample left/right wall distance
+    max_steering_angle_deg: 24.0  # physical steering limit -- set to your actual servo/chassis max
+    min_safe_clearance: 0.4  # (m) gap width beyond car_width at which speed reaches max_speed; narrower gaps scale down toward min_speed
+    base_frame_id: 'ego_racecar/base_link'  # frame the steering arrow marker is attached to
+    marker_length_min: 0.3   # (m) arrow length at zero steering angle
+    marker_length_max: 1.0   # (m) arrow length at max_steering_angle_deg
+    marker_shaft_diameter: 0.03
+    marker_head_diameter: 0.06
+    marker_head_length: 0.1
+    side_safety_distance: 0.35
+    side_safety_probe_from_deg: 90.0
+    side_safety_probe_to_deg: 130.0
