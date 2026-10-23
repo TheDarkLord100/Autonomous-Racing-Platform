@@ -20,7 +20,7 @@ class PIDController:
     def __init__(self, config: PIDControllerConfig):
         self.config = config
         self.integral = 0.0
-        self.prev_error = 0.0
+        self.prev_error = None
 
     def compute(self, error, dt):
         if dt <= 0.0:
@@ -30,7 +30,10 @@ class PIDController:
         self.integral = max(-self.config.integral_limit,
                              min(self.config.integral_limit, self.integral))
 
-        derivative = (error - self.prev_error) / dt
+        if self.prev_error is None:
+            derivative = 0.0
+        else:
+            derivative = (error - self.prev_error) / dt
         self.prev_error = error
 
         raw = (self.config.kp * error

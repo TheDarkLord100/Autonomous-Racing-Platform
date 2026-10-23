@@ -57,7 +57,7 @@ class PIDNode(Node):
 
         self.scan_processor = ScanProcessor()
         self._build_modules()
-        self.add_on_set_parameters_callback(self._on_param_update)
+        self.add_post_set_parameters_callback(self._on_param_update)
 
         # ---- Subscribers / publishers ----
         self.scan_sub = self.create_subscription(
@@ -132,8 +132,8 @@ class PIDNode(Node):
 
     def _on_param_update(self, params):
         self._build_modules()
-        return SetParametersResult(successful=True)
-
+        self.get_logger().info('Params updated: ' + ', '.join(f'{p.name}={p.value}' for p in params))
+    
     # ------------------------------------------------------------------
     # Callback
     # ------------------------------------------------------------------
@@ -197,7 +197,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
