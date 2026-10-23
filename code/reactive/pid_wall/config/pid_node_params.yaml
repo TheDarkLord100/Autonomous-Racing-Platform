@@ -1,19 +1,31 @@
 pid_node:
   ros__parameters:
-    kp: 0.9
-    ki: 0.0
-    kd: 0.25
-    desired_distance: 1.0
-    wall_side: "left"
-    theta_deg: 35.0
-    lookahead_time: 0.3
-    velocity: 1.0
-    max_steering_angle: 0.4189
-    integral_limit: 3.0
-    front_cone_deg: 20.0
-    min_front_distance: 1.2
-    slow_front_distance: 3.0
-    min_velocity: 0.8
-    max_steering_rate: 3.0
-    median_spread_deg: 2.0
-    base_frame_id: "ego_racecar/base_link"
+    # ---- Wall geometry (two-ray method) ----
+    wall_side: "left"               # wall to follow: "left" or "right"
+    desired_distance: 1.0           # (m) distance to hold from the wall; error = desired_distance - projected distance (>0 = too close)
+    theta_deg: 35.0                 # (deg) angle between ray b (perpendicular to the car) and ray a (angled towards the front)
+    median_spread_deg: 2.0          # (deg) each ray is the median of 3 beams at -spread / 0 / +spread -- rejects single-beam noise
+    lookahead_time: 0.3             # (s) project the wall distance forward by velocity * lookahead_time to cover actuation delay
+
+    # ---- PID (output = steering angle, rad) ----
+    kp: 0.32                         # (rad per m of distance error)
+    ki: 0.0                         # (rad per m*s) off by design -- integral winds up through corners
+    kd: 0.25                        # (rad per m/s of error rate)
+    integral_limit: 3.0             # (m*s) anti-windup clamp on the integral term (only matters if ki > 0)
+    gain_ref_velocity: 5.0          # (m/s) speed at which kp/ki/kd apply as written; all three scale by (gain_ref_velocity / v)^2. 0 = off
+    gain_scale_min: 0.5             # lower clamp on the scale (fast straights)
+    gain_scale_max: 3.0             # upper clamp on the scale (slow corners) -- 3.0 gives kp ~0.96 at <=2.9 m/s
+
+    # ---- Steering limits ----
+    max_steering_angle: 0.4189      # (rad) physical steering limit (0.4189 rad = 24 deg)
+    max_steering_rate: 3.0          # (rad/s) max change in commanded steering per second -- smooths sudden PID jumps
+
+    # ---- Speed governor (slows down when the track ahead closes in) ----
+    velocity: 5.0                   # (m/s) cruise speed when the path ahead is clear
+    min_velocity: 3.0               # (m/s) floor speed when something is close ahead (corner / apex)
+    front_cone_deg: 20.0            # (deg) half-angle of the forward cone; samples 5 beams at -cone, -cone/2, 0, +cone/2, +cone
+    slow_front_distance: 3.0        # (m) closest reading in the cone above this -> full cruise velocity
+    min_front_distance: 1.2         # (m) closest reading below this -> min_velocity; speed scales linearly in between
+
+    # ---- Visualization (RViz debug markers) ----
+    base_frame_id: "ego_racecar/base_link"  # frame the rays, target line, status text and steering arrow are drawn in

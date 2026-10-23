@@ -19,6 +19,7 @@ Publishes:   /drive (ackermann_msgs/AckermannDriveStamped)
 """
 
 import math
+import time
 
 from ackermann_msgs.msg import AckermannDriveStamped
 import rclpy
@@ -39,72 +40,39 @@ class GapFollowNode(Node):
         super().__init__('gap_follow_node')
 
         # ---------------- declare parameters ----------------
-        max_range = self.declare_parameter('max_range', 4.0).value
-        bubble_radius = self.declare_parameter('bubble_radius', 0.35).value
-        min_gap_points = self.declare_parameter('min_gap_points', 5).value
-        max_speed = self.declare_parameter('max_speed', 4.0).value
-        min_speed = self.declare_parameter('min_speed', 1.0).value
-        fov_deg = self.declare_parameter('fov_deg', 180.0).value
-        car_width = self.declare_parameter('car_width', 0.30).value
-        disparity_threshold = self.declare_parameter('disparity_threshold', 0.3).value
-        gap_edge_margin = self.declare_parameter('gap_edge_margin', 0.10).value
-        speed_scale_angle_deg = self.declare_parameter('speed_scale_angle_deg', 20.0).value
-        center_gain = self.declare_parameter('center_gain', 0.35).value
-        center_blend_angle_deg = self.declare_parameter('center_blend_angle_deg', 15.0).value
-        side_probe_window_deg = self.declare_parameter('side_probe_window_deg', 8.0).value
-        max_steering_angle_deg = self.declare_parameter('max_steering_angle_deg', 24.0).value
-        min_safe_clearance = self.declare_parameter('min_safe_clearance', 0.3).value
-        base_frame_id = self.declare_parameter(
-            'base_frame_id', 'ego_racecar/base_link').value
-        marker_length_min = self.declare_parameter('marker_length_min', 0.3).value
-        marker_length_max = self.declare_parameter('marker_length_max', 1.0).value
-        marker_shaft_diameter = self.declare_parameter('marker_shaft_diameter', 0.03).value
-        marker_head_diameter = self.declare_parameter('marker_head_diameter', 0.06).value
-        marker_head_length = self.declare_parameter('marker_head_length', 0.1).value
+        # Defaults match config/params.yaml, so running without the YAML
+        # behaves the same as the tuned launch.
+        self.declare_parameter('max_range', 4.0)
+        self.declare_parameter('bubble_radius', 0.35)
+        self.declare_parameter('min_gap_points', 5)
+        self.declare_parameter('max_speed', 4.0)
+        self.declare_parameter('min_speed', 1.0)
+        self.declare_parameter('fov_deg', 180.0)
+        self.declare_parameter('car_width', 0.30)
+        self.declare_parameter('disparity_threshold', 0.3)
+        self.declare_parameter('gap_edge_margin', 0.7)
+        self.declare_parameter('speed_scale_angle_deg', 20.0)
+        self.declare_parameter('center_gain', 0.35)
+        self.declare_parameter('center_blend_angle_deg', 15.0)
+        self.declare_parameter('side_probe_window_deg', 8.0)
+        self.declare_parameter('max_steering_angle_deg', 24.0)
+        self.declare_parameter('min_safe_clearance', 0.4)
+        self.declare_parameter('side_safety_distance', 0.35)
+        self.declare_parameter('side_safety_probe_from_deg', 90.0)
+        self.declare_parameter('side_safety_probe_to_deg', 130.0)
+        self.declare_parameter('base_frame_id', 'ego_racecar/base_link')
+        self.declare_parameter('marker_length_min', 0.3)
+        self.declare_parameter('marker_length_max', 1.0)
+        self.declare_parameter('marker_shaft_diameter', 0.03)
+        self.declare_parameter('marker_head_diameter', 0.06)
+        self.declare_parameter('marker_head_length', 0.1)
+        self.declare_parameter('publish_markers', False)
 
-        # Half-width the disparity extender / gap trim sweep outward, plus a
-        # small safety pad. Shared by ScanProcessor and GapFinder.
-        car_half_width = car_width / 2.0 + 0.05
-
-        # ---------------- wire up modules ----------------
-        scan_cfg = ScanProcessorConfig()
-        scan_cfg.max_range = max_range
-        scan_cfg.fov_deg = fov_deg
-        scan_cfg.bubble_radius = bubble_radius
-        scan_cfg.disparity_threshold = disparity_threshold
-        scan_cfg.car_half_width = car_half_width
-        self.scan_processor = ScanProcessor(scan_cfg)
-
-        gap_cfg = GapFinderConfig()
-        gap_cfg.min_gap_points = min_gap_points
-        gap_cfg.gap_edge_margin = gap_edge_margin
-        gap_cfg.car_half_width = car_half_width
-        self.gap_finder = GapFinder(gap_cfg)
-
-        target_cfg = TargetSelectorConfig()
-        target_cfg.center_gain = center_gain
-        target_cfg.center_blend_angle_deg = center_blend_angle_deg
-        target_cfg.side_probe_window_deg = side_probe_window_deg
-        target_cfg.max_steering_angle_deg = max_steering_angle_deg
-        target_cfg.max_range = max_range
-        self.target_selector = TargetSelector(target_cfg)
-
-        speed_cfg = SpeedPlannerConfig()
-        speed_cfg.max_speed = max_speed
-        speed_cfg.min_speed = min_speed
-        speed_cfg.speed_scale_angle_deg = speed_scale_angle_deg
-        speed_cfg.min_safe_clearance = min_safe_clearance
-        speed_cfg.car_width = car_width
-        self.speed_planner = SpeedPlanner(speed_cfg)
-
-        marker_cfg = MarkerVisualizerConfig()
-        marker_cfg.base_frame_id = base_frame_id
-        marker_cfg.marker_length_min = marker_length_min
-        marker_cfg.marker_length_max = marker_length_max
-        marker_cfg.marker_shaft_diameter = marker_shaft_diameter
-        marker_cfg.marker_head_diameter = marker_head_diameter
-        marker_cfg.marker_head_length = marker_head_length
-        self.marker_visualizer = MarkerVisualizer(marker_cfg)
+        self._build_modules()
+        # Post-set: runs AFTER new values are stored, so _build_modules()
+        # reads the updated values. All modules are stateless, so rebuilding
+        # them mid-run is safe.
+        self.add_post_set_parameters_callback(self._on_param_update)
 
         # ---------------- ROS interfaces ----------------
         self.scan_sub = self.create_subscription(
@@ -118,6 +86,70 @@ class GapFollowNode(Node):
 
         self.get_logger().info('Gap Follow node started')
 
+    # ------------------------------------------------------------------
+    # Parameters / module wiring
+    # ------------------------------------------------------------------
+    def _p(self, name):
+        return self.get_parameter(name).value
+
+    def _build_modules(self):
+        max_range = self._p('max_range')
+        car_width = self._p('car_width')
+        # Half-width the disparity extender / gap trim sweep outward, plus a
+        # small safety pad. Shared by ScanProcessor and GapFinder.
+        car_half_width = car_width / 2.0 + 0.05
+
+        scan_cfg = ScanProcessorConfig()
+        scan_cfg.max_range = max_range
+        scan_cfg.fov_deg = self._p('fov_deg')
+        scan_cfg.bubble_radius = self._p('bubble_radius')
+        scan_cfg.disparity_threshold = self._p('disparity_threshold')
+        scan_cfg.car_half_width = car_half_width
+        self.scan_processor = ScanProcessor(scan_cfg)
+
+        gap_cfg = GapFinderConfig()
+        gap_cfg.min_gap_points = self._p('min_gap_points')
+        gap_cfg.gap_edge_margin = self._p('gap_edge_margin')
+        gap_cfg.car_half_width = car_half_width
+        self.gap_finder = GapFinder(gap_cfg)
+
+        target_cfg = TargetSelectorConfig()
+        target_cfg.center_gain = self._p('center_gain')
+        target_cfg.center_blend_angle_deg = self._p('center_blend_angle_deg')
+        target_cfg.side_probe_window_deg = self._p('side_probe_window_deg')
+        target_cfg.max_steering_angle_deg = self._p('max_steering_angle_deg')
+        target_cfg.max_range = max_range
+        target_cfg.side_safety_distance = self._p('side_safety_distance')
+        target_cfg.side_safety_probe_from_deg = self._p('side_safety_probe_from_deg')
+        target_cfg.side_safety_probe_to_deg = self._p('side_safety_probe_to_deg')
+        self.target_selector = TargetSelector(target_cfg)
+
+        speed_cfg = SpeedPlannerConfig()
+        speed_cfg.max_speed = self._p('max_speed')
+        speed_cfg.min_speed = self._p('min_speed')
+        speed_cfg.speed_scale_angle_deg = self._p('speed_scale_angle_deg')
+        speed_cfg.min_safe_clearance = self._p('min_safe_clearance')
+        speed_cfg.car_width = car_width
+        self.speed_planner = SpeedPlanner(speed_cfg)
+
+        marker_cfg = MarkerVisualizerConfig()
+        marker_cfg.base_frame_id = self._p('base_frame_id')
+        marker_cfg.marker_length_min = self._p('marker_length_min')
+        marker_cfg.marker_length_max = self._p('marker_length_max')
+        marker_cfg.marker_shaft_diameter = self._p('marker_shaft_diameter')
+        marker_cfg.marker_head_diameter = self._p('marker_head_diameter')
+        marker_cfg.marker_head_length = self._p('marker_head_length')
+        self.marker_visualizer = MarkerVisualizer(marker_cfg)
+        self.publish_markers = self._p('publish_markers')
+
+    def _on_param_update(self, params):
+        self._build_modules()
+        self.get_logger().info(
+            'Params updated: ' + ', '.join(f'{p.name}={p.value}' for p in params))
+
+    # ------------------------------------------------------------------
+    # Callback
+    # ------------------------------------------------------------------
     def publish_drive(self, steering_angle, speed):
         drive_msg = AckermannDriveStamped()
         drive_msg.header.stamp = self.get_clock().now().to_msg()
@@ -127,20 +159,26 @@ class GapFollowNode(Node):
         self.drive_pub.publish(drive_msg)
 
     def scan_callback(self, msg: LaserScan):
-        t_start = self.get_clock().now()
-        stamp = msg.header.stamp
+        # Wall-clock timer: measures real compute time, unaffected by sim time.
+        t_start = time.perf_counter()
         sp = self.scan_processor
         ts = self.target_selector
-        viz = self.marker_visualizer
 
         ranges, angles, mask = sp.preprocess(
             msg.ranges, msg.angle_min, msg.angle_increment)
 
-        # Measure true left/right wall distance from the unmutated scan, before
-        # extend_disparities/zero_bubble alter ranges for gap-finding purposes.
+        # Keep an untouched copy of the cleaned scan, before
+        # extend_disparities/zero_bubble alter ranges for gap-finding. The
+        # wall-distance probes and the side-safety check must see real
+        # walls -- the bubble is centred on the closest point, which in a
+        # hairpin is usually the side wall the safety check is looking for.
+        clean_ranges = ranges.copy()
+
         side_window_rad = ts.side_probe_window_rad()
-        left_dist = ts.compute_wall_distance(ranges, angles, math.pi / 2.0, side_window_rad)
-        right_dist = ts.compute_wall_distance(ranges, angles, -math.pi / 2.0, side_window_rad)
+        left_dist = ts.compute_wall_distance(
+            clean_ranges, angles, math.pi / 2.0, side_window_rad)
+        right_dist = ts.compute_wall_distance(
+            clean_ranges, angles, -math.pi / 2.0, side_window_rad)
 
         sp.extend_disparities(ranges, mask, msg.angle_increment)
 
@@ -149,15 +187,11 @@ class GapFollowNode(Node):
 
         gap = self.gap_finder.find_max_gap(ranges, mask)
         if gap is None:
-            # No viable gap in FOV: brake hard, hold last heading
-            debug_markers = MarkerArray()
-            debug_markers.markers.append(
-                viz.make_scan_points_marker(ranges, angles, stamp))
-            debug_markers.markers.append(
-                viz.make_text_marker('NO GAP', 1.0, 0.0, 0.0, 0.5, stamp))
-            self.debug_marker_pub.publish(debug_markers)
-
+            # No viable gap in FOV: brake hard, steer straight
             self.publish_drive(0.0, self.speed_planner.min_speed() * 0.3)
+            self._check_budget(t_start)
+            if self.publish_markers:
+                self._publish_no_gap_markers(ranges, angles, msg.header.stamp)
             return
 
         raw_gap_start, raw_gap_end = gap
@@ -173,13 +207,12 @@ class GapFollowNode(Node):
         final_angle = ts.compute_final_angle(ftg_angle, left_dist, right_dist)
         # Tweak 3 hard override: abort the turn if we're about to clip a wall
         # on the side we're turning into.
+        side_override = False
         if abs(final_angle) > 1e-3:
             turn_sign = 1.0 if final_angle > 0.0 else -1.0
-            if ts.side_too_close(ranges, angles, turn_sign):
+            if ts.side_too_close(clean_ranges, angles, turn_sign):
                 final_angle = 0.0
-        max_steering_rad = ts.max_steering_rad()
-
-        self.marker_pub.publish(viz.make_marker(final_angle, max_steering_rad, stamp))
+                side_override = True
 
         # Speed floor based on the gap's real physical width, not just the
         # steering angle -- a narrow needle-shaped opening (like a switchback
@@ -187,7 +220,44 @@ class GapFollowNode(Node):
         # slowdown, which the angle-based limit alone can't see.
         gap_width = self.gap_finder.compute_gap_width(
             ranges, angles, raw_gap_start, raw_gap_end)
-        speed = self.speed_planner.compute_speed(final_angle, gap_width)
+        if side_override:
+            # A zeroed steering angle would otherwise read as "straight line,
+            # full speed" -- the opposite of what an aborted turn needs.
+            speed = self.speed_planner.min_speed()
+        else:
+            speed = self.speed_planner.compute_speed(final_angle, gap_width)
+
+        # Drive first: visualization must never add latency to the control loop.
+        self.publish_drive(final_angle, speed)
+        self._check_budget(t_start)
+
+        if self.publish_markers:
+            self._publish_markers(
+                ranges, angles, raw_gap_start, raw_gap_end, gap_start, gap_end,
+                target_idx, final_angle, speed, msg.header.stamp)
+
+    # ------------------------------------------------------------------
+    # Timing / visualization (off the control path)
+    # ------------------------------------------------------------------
+    def _check_budget(self, t_start):
+        control_ms = (time.perf_counter() - t_start) * 1e3
+        if control_ms > 10.0:
+            self.get_logger().warn(
+                f'control path took {control_ms:.2f} ms (budget: 10ms for 40Hz LiDAR)')
+
+    def _publish_no_gap_markers(self, ranges, angles, stamp):
+        viz = self.marker_visualizer
+        debug_markers = MarkerArray()
+        debug_markers.markers.append(viz.make_scan_points_marker(ranges, angles, stamp))
+        debug_markers.markers.append(
+            viz.make_text_marker('NO GAP', 1.0, 0.0, 0.0, 0.5, stamp))
+        self.debug_marker_pub.publish(debug_markers)
+
+    def _publish_markers(self, ranges, angles, raw_gap_start, raw_gap_end,
+                         gap_start, gap_end, target_idx, final_angle, speed, stamp):
+        viz = self.marker_visualizer
+        self.marker_pub.publish(
+            viz.make_marker(final_angle, self.target_selector.max_steering_rad(), stamp))
 
         debug_markers = MarkerArray()
         debug_markers.markers.append(viz.make_scan_points_marker(ranges, angles, stamp))
@@ -196,17 +266,10 @@ class GapFollowNode(Node):
         debug_markers.markers.append(viz.make_gap_marker(
             ranges, angles, gap_start, gap_end, 1, 0.0, 1.0, 0.0, stamp))
         debug_markers.markers.append(viz.make_target_marker(
-            float(ranges[target_idx]), ftg_angle, stamp))
+            float(ranges[target_idx]), float(angles[target_idx]), stamp))
         debug_markers.markers.append(viz.make_speed_text_marker(
             speed, self.speed_planner.min_speed(), self.speed_planner.max_speed(), stamp))
         self.debug_marker_pub.publish(debug_markers)
-
-        self.publish_drive(final_angle, speed)
-
-        elapsed_ms = (self.get_clock().now() - t_start).nanoseconds / 1e6
-        if elapsed_ms > 10.0:
-            self.get_logger().warn(
-                f'scan_callback took {elapsed_ms:.2f} ms (budget: 10ms for 40Hz LiDAR)')
 
 
 def main(args=None):

@@ -62,10 +62,14 @@ class ScanProcessor:
         however many beams the car's half-width would sweep at that range,
         so corners/alcoves read as solid instead of leaving a false gap.
 
-        Kept as a sequential loop on purpose: each extension modifies
-        ranges that later pairs in the same pass compare against.
+        Disparities are detected on the ORIGINAL ranges and extensions are
+        written to a separate output. Detecting on the array being written
+        lets an upward (increasing-index) extension create a fresh edge one
+        step ahead of the loop, which then extends again -- cascading every
+        obstacle's distance across the whole FOV to its left.
         """
-        r = ranges.tolist()
+        orig = ranges.tolist()
+        r = list(orig)
         m = mask.tolist()
         n = len(r)
         threshold = self.config.disparity_threshold
@@ -75,8 +79,8 @@ class ScanProcessor:
             if not m[i] or not m[i + 1]:
                 continue
 
-            r1 = r[i]
-            r2 = r[i + 1]
+            r1 = orig[i]
+            r2 = orig[i + 1]
             if r1 <= 0.0 or r2 <= 0.0:
                 continue  # already blanked out
 
@@ -105,8 +109,15 @@ class ScanProcessor:
         ranges[:] = r
 
     def find_closest_point(self, ranges, mask):
-        """Return (index, distance) of the closest in-FOV point."""
-        masked = np.where(mask, ranges, np.float32(np.inf))
+        """
+        Return (index, distance) of the closest valid in-FOV point.
+
+        Zero ranges are invalid (NaN returns, or real-LiDAR dropouts) and
+        are skipped -- otherwise a single bad beam reads as an obstacle at
+        0 m and triggers a 180-degree safety bubble.
+        """
+        valid = mask & (ranges > 0.0)
+        masked = np.where(valid, ranges, np.float32(np.inf))
         idx = int(np.argmin(masked))
         return idx, float(masked[idx])
 

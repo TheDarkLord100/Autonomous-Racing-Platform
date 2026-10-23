@@ -54,6 +54,9 @@ class PIDNode(Node):
         self.declare_parameter('max_steering_rate', 3.0)
         self.declare_parameter('median_spread_deg', 2.0)
         self.declare_parameter('base_frame_id', 'ego_racecar/base_link')
+        self.declare_parameter('gain_ref_velocity', 0.0)
+        self.declare_parameter('gain_scale_min', 0.5)
+        self.declare_parameter('gain_scale_max', 3.0)        
 
         self.scan_processor = ScanProcessor()
         self._build_modules()
@@ -104,6 +107,9 @@ class PIDNode(Node):
         self.pid_config.integral_limit = self.get_parameter('integral_limit').value
         self.pid_config.max_steering_angle = self.get_parameter('max_steering_angle').value
         self.pid_config.side_sign = self.error_estimator.side_sign
+        self.pid_config.gain_ref_velocity = self.get_parameter('gain_ref_velocity').value
+        self.pid_config.gain_scale_min = self.get_parameter('gain_scale_min').value
+        self.pid_config.gain_scale_max = self.get_parameter('gain_scale_max').value
         # Preserve integral/prev_error state across a live param tweak
         # instead of resetting the controller every time.
         if hasattr(self, 'pid_controller'):
@@ -152,7 +158,7 @@ class PIDNode(Node):
         dt = 0.0 if self.prev_time is None else now - self.prev_time
         self.prev_time = now
 
-        raw_steering = self.pid_controller.compute(error, dt)
+        raw_steering = self.pid_controller.compute(error, dt, velocity)
         steering_angle = self.steering_shaper.shape(raw_steering, dt)
 
         self._publish_drive(steering_angle, velocity)
