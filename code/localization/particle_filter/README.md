@@ -11,15 +11,17 @@ Own implementation (ROS 2 Jazzy, `ament_python`). Ideas taken from: MIT RACECAR 
 ```
 particle_filter/
 ├── package.xml                     ROS package manifest (deps: rclpy, tf2_ros, geometry_msgs,
-│                                   nav_msgs, sensor_msgs, numpy, scipy)
-├── setup.py                        install rules + two executables: pf_node, odom_noise_node
+│                                   nav_msgs, sensor_msgs, odom_noise, numpy, scipy)
+├── setup.py                        install rules + executable pf_node
 ├── setup.cfg                       script install location (ament_python standard)
 ├── resource/particle_filter        ament index marker
 ├── config/
-│   ├── pf_params.yaml              all filter parameters
-│   └── odom_noise_params.yaml      parameters of the odometry-noise node
+│   └── pf_params.yaml              all filter parameters
 ├── launch/
-│   └── pf_launch.py                starts the filter (+ the noise node with odom_noise:=true)
+│   └── pf_launch.py                starts the filter (+ the odom_noise package's node with
+│                                   odom_noise:=true)
+├── test/                           offline tests (no ROS needed): sim_utils.py mini simulator,
+│                                   test_filter.py
 └── particle_filter/                Python package
     ├── geometry.py                 SE(2) math
     ├── occupancy_map.py            map, distance field, free-space queries
@@ -28,12 +30,10 @@ particle_filter/
     ├── resampling.py               N_eff, low-variance resampling
     ├── filter.py                   the particle filter itself (ties everything together)
     ├── odom_buffer.py              timestamped odometry history + interpolation
-    ├── pf_node.py                  ROS 2 node wrapping the filter
-    ├── odom_noise.py               synthetic wheel-odometry error model
-    └── odom_noise_node.py          ROS 2 node: ground-truth odom -> drifting odom
+    └── pf_node.py                  ROS 2 node wrapping the filter
 ```
 
-Design rule: every module except the two `*_node.py` files is plain NumPy/SciPy with **no ROS imports**. The algorithm can be run, tested and debugged offline; the nodes only convert messages and call into it.
+Design rule: every module except `pf_node.py` is plain NumPy/SciPy with **no ROS imports**. The algorithm can be run, tested and debugged offline; the nodes only convert messages and call into it.
 
 ---
 
@@ -89,17 +89,8 @@ Lets the filter use the odometry pose *at the scan's timestamp*, not whatever od
 ### `pf_node.py` — `ParticleFilterNode` (executable `pf_node`)
 ROS 2 wrapper. Reads parameters, converts messages, schedules the filter, publishes results. See *Data flow*.
 
-### `odom_noise.py` — `OdometryNoise`
-Turns ground-truth motion into realistic wheel odometry. Per true motion step `(dx, dy, dθ)`, with trans = |(dx, dy)|:
-```
-dx' = dx·(1 + trans_scale_error) + N(0, trans_noise·trans)
-dy' = dy                          + N(0, trans_noise·trans)
-dθ' = dθ·(1 + rot_scale_error) + yaw_drift_per_m·dx + N(0, rot_noise_per_rad·|dθ| + rot_noise_per_m·trans)
-```
-Corrupted steps are integrated into a pose that starts at the `odom` origin and drifts, like VESC odometry. Systematic terms (scale errors, yaw drift) dominate; white-noise terms add jitter. The twist is scaled by the same systematic errors.
-
-### `odom_noise_node.py` — `OdomNoiseNode` (executable `odom_noise_node`)
-Subscribes to the simulator's ground-truth `/ego_racecar/odom`, publishes `/ego_racecar/odom_noisy` (frame `odom`). Exists because the simulator's odometry is perfect; feeding it straight to the filter would never exercise the motion model or the scale calibration.
+### Odometry noise (separate package)
+Drifting wheel odometry for simulation comes from the shared `odom_noise` package (`code/odom_noise`), so every localization package is tested against the same, repeatable odometry error. `pf_launch.py odom_noise:=true` starts it and points the filter at `/ego_racecar/odom_noisy`. The offline tests also use its `noise_model.py`.
 
 ---
 
@@ -275,11 +266,6 @@ Plus a warning if scans fell outside the odom buffer.
 - Reading the log: N_eff/N mean well below ~0.1 → lower `effective_beams`; estimate lagging in corners → raise it.
 - `min_inject_ratio`: see *Recovery*.
 
-### `config/odom_noise_params.yaml`
-- `input_topic` /ego_racecar/odom, `output_topic` /ego_racecar/odom_noisy, `odom_frame`, `base_frame`, `random_seed`
-- Systematic: `trans_scale_error` 0.05, `rot_scale_error` 0.05, `yaw_drift_per_m` 0.005 rad/m
-- White noise: `trans_noise` 0.02, `rot_noise_per_rad` 0.02, `rot_noise_per_m` 0.005
-
 ---
 
 ## Build and run
@@ -290,11 +276,13 @@ python3 -m colcon build --packages-select particle_filter
 source install/setup.bash
 
 ros2 launch particle_filter pf_launch.py                   # ground-truth sim odometry
-ros2 launch particle_filter pf_launch.py odom_noise:=true  # drifting odometry (noise node started,
-                                                           # filter reads /ego_racecar/odom_noisy)
+ros2 launch particle_filter pf_launch.py odom_noise:=true  # drifting odometry (odom_noise node
+                                                           # started, filter reads /ego_racecar/odom_noisy)
 ```
 
-Launch arguments: `params_file`, `odom_noise_params_file`, `use_sim_time` (false), `odom_noise` (false).
+Launch arguments: `params_file`, `use_sim_time` (false), `odom_noise` (false). Noise parameters are in the `odom_noise` package's own config.
+
+Offline tests (from the package root, with `code/odom_noise` next to it): `python3 -m pytest test/ -v`
 
 Then initialise with RViz "2D Pose Estimate", or set `use_initial_pose_param: true` with `initial_pose` = the simulator's start pose (`sx`, `sy`, `stheta` in the gym's `sim.yaml`).
 

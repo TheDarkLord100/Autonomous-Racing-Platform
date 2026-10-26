@@ -29,7 +29,6 @@ setup(
     entry_points={
         'console_scripts': [
             'pf_node = particle_filter.pf_node:main',
-            'odom_noise_node = particle_filter.odom_noise_node:main'
         ],
     },
 )

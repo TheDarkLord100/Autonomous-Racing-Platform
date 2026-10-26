@@ -9,8 +9,11 @@ import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
 
-from .geometry import quat_to_yaw, yaw_to_quat
-from .odom_noise import OdometryNoise
+from .noise_model import OdometryNoise
+
+
+def _quat_to_yaw(q):
+    return float(np.arctan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z)))
 
 
 class OdomNoiseNode(Node):
@@ -22,7 +25,7 @@ class OdomNoiseNode(Node):
         self.output_topic = p('output_topic', '/ego_racecar/odom_noisy').value
         self.odom_frame = p('odom_frame', 'odom').value
         self.base_frame = p('base_frame', 'ego_racecar/base_link').value
-        seed = p('random_seed', -1).value
+        seed = p('random_seed', 42).value
 
         self.noise = OdometryNoise(
             trans_scale_error=p('trans_scale_error', 0.05).value,
@@ -31,17 +34,22 @@ class OdomNoiseNode(Node):
             trans_noise=p('trans_noise', 0.02).value,
             rot_noise_per_rad=p('rot_noise_per_rad', 0.02).value,
             rot_noise_per_m=p('rot_noise_per_m', 0.005).value,
-            rng=np.random.default_rng(None if seed < 0 else seed))
+            teleport_threshold=p('teleport_threshold', 1.0).value,
+            seed=seed)
 
         self.pub = self.create_publisher(Odometry, self.output_topic, 20)
         self.create_subscription(Odometry, self.input_topic, self.cb, 20)
-        self.get_logger().info(f'odom noise: {self.input_topic} -> {self.output_topic}')
+        self.get_logger().info(
+            f'odom noise: {self.input_topic} -> {self.output_topic} '
+            f'(seed {"random" if seed < 0 else seed})')
 
     def cb(self, msg):
-        q = msg.pose.pose.orientation
-        true_pose = (msg.pose.pose.position.x, msg.pose.pose.position.y,
-                     quat_to_yaw(q.x, q.y, q.z, q.w))
-        pose = self.noise.step(true_pose)
+        pp = msg.pose.pose
+        true_pose = (pp.position.x, pp.position.y, _quat_to_yaw(pp.orientation))
+        pose, teleported = self.noise.step(true_pose)
+        if teleported:
+            self.get_logger().info('car teleported (sim reset / initial pose): '
+                                   'jump not added to odometry')
 
         out = Odometry()
         out.header.stamp = msg.header.stamp
@@ -49,11 +57,8 @@ class OdomNoiseNode(Node):
         out.child_frame_id = self.base_frame
         out.pose.pose.position.x = float(pose[0])
         out.pose.pose.position.y = float(pose[1])
-        qx, qy, qz, qw = yaw_to_quat(pose[2])
-        out.pose.pose.orientation.x = qx
-        out.pose.pose.orientation.y = qy
-        out.pose.pose.orientation.z = qz
-        out.pose.pose.orientation.w = qw
+        out.pose.pose.orientation.z = float(np.sin(0.5 * pose[2]))
+        out.pose.pose.orientation.w = float(np.cos(0.5 * pose[2]))
         t = msg.twist.twist
         vx, vy, wz = self.noise.corrupt_twist(t.linear.x, t.linear.y, t.angular.z)
         out.twist.twist.linear.x = float(vx)
