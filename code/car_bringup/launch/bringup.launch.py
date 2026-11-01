@@ -16,4 +16,6 @@ def generate_launch_description():
              remappings=[('ackermann_cmd', '/drive')]),
         Node(package='vesc_ackermann', executable='vesc_to_odom_node',
              name='vesc_to_odom_node', parameters=[vesc_config]),
+        Node(package='car_bringup', executable='twist_to_ackermann',
+             name='twist_to_ackermann_node', parameters=[vesc_config]),
     ])

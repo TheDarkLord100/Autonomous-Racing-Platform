@@ -36,3 +36,8 @@ vesc_to_odom_node:
     # vesc_to_odom.cpp:102 negates reported ERPM → negate both here
     speed_to_erpm_gain: -4614.0
     speed_to_erpm_offset: -0.0
+
+twist_to_ackermann_node:
+  ros__parameters:
+    max_speed: 1.0             # m/s, teleop cap (≈4614 ERPM with placeholder gain)
+    max_steering_angle: 0.35   # rad (~20°); placeholder until steering calibration

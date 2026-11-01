@@ -9,6 +9,9 @@
 
   <depend>vesc_driver</depend>
   <depend>vesc_ackermann</depend>
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>ackermann_msgs</depend>
 
   <exec_depend>launch_ros</exec_depend>
   
