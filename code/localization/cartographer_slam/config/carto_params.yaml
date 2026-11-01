@@ -1,0 +1,25 @@
+carto_node:
+  ros__parameters:
+    # mode, map files and lua dir are set by the launch files
+    mode: localization                # mapping | localization
+
+    # ---- topics
+    tracked_pose_topic: /tracked_pose # from cartographer_node (carto_map frame)
+    initialpose_topic: /initialpose   # RViz "2D Pose Estimate"
+    pose_topic: /carto/pose           # PoseStamped, map frame, per scan -> evaluation
+    path_topic: /carto/path
+    path_max_length: 3000
+
+    # ---- frames
+    map_frame: map
+    carto_map_frame: carto_map
+    origin: [0.0, 0.0, 0.0]           # pose of carto_map in map: car pose when mapping started
+
+    # ---- localization start
+    configuration_basename: carto_localization.lua
+    use_initial_pose_param: false     # true: start from initial_pose without waiting for /initialpose
+    initial_pose: [0.0, 0.0, -2.879]     # x, y, yaw in map (match sx/sy/stheta in sim.yaml)
+
+    # ---- services
+    service_timeout_sec: 10.0
+    optimization_wait_sec: 5.0        # save_map: wait after finish_trajectory for the final optimization
