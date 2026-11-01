@@ -1,0 +1,38 @@
+/**:
+  ros__parameters:
+    # ---- vesc_driver ----
+    port: /dev/ttyACM0
+    duty_cycle_min: 0.0
+    duty_cycle_max: 0.0
+    current_min: 0.0
+    current_max: 0.0
+    brake_min: 0.0
+    brake_max: 0.0
+    speed_min: -10000.0
+    speed_max: 10000.0
+    position_min: 0.0
+    position_max: 0.0
+    servo_min: 0.0
+    servo_max: 1.0
+
+    # ---- steering conversion (shared) ----
+    steering_angle_to_servo_gain: 1.0      # placeholder
+    steering_angle_to_servo_offset: 0.6    # straight ahead
+
+    # ---- vesc_to_odom ----
+    wheelbase: 0.262                         # ← your measurement
+    odom_frame: odom
+    base_frame: base_link
+    publish_tf: false
+    use_servo_cmd_to_calc_angular_velocity: true
+
+ackermann_to_vesc_node:
+  ros__parameters:
+    speed_to_erpm_gain: 4614.0             # placeholder
+    speed_to_erpm_offset: 0.0
+
+vesc_to_odom_node:
+  ros__parameters:
+    # vesc_to_odom.cpp:102 negates reported ERPM → negate both here
+    speed_to_erpm_gain: -4614.0
+    speed_to_erpm_offset: -0.0
