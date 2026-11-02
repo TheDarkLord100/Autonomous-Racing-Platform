@@ -1,0 +1,4 @@
+# cartographer_slam map
+pbstream: Spielberg.pbstream
+# pose of carto_map in the simulator map frame (car pose when mapping started): [x, y, yaw]
+origin: [0.0, 0.0, -2.879]
