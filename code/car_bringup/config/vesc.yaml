@@ -17,7 +17,7 @@
 
     # ---- steering conversion (shared) ----
     steering_angle_to_servo_gain: 1.0      # placeholder
-    steering_angle_to_servo_offset: 0.6    # straight ahead
+    steering_angle_to_servo_offset: 0.5    # straight ahead
 
     # ---- vesc_to_odom ----
     wheelbase: 0.262                         # ← your measurement
