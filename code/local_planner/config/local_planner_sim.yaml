@@ -1,0 +1,51 @@
+local_planner:
+  ros__parameters:
+    planner: frenet                 # passthrough | frenet | rrt (overridden by the launch arg)
+    pose_topic: /ego_racecar/odom   # GT now; PF output later
+    scan_topic: /scan
+    waypoints_topic: /global_waypoints
+    local_topic: /local_waypoints
+    base_frame: ego_racecar/base_link
+
+    horizon: 5.0                    # m, fixed (~10 car lengths)
+    car_half_width: 0.155           # gym width 0.31
+    clearance_margin: 0.10          # hard clearance for gate + planners. Keep BELOW the global
+                                    # --margin (0.15): with equal values the gate fires on ~5% of
+                                    # cycles even on the GT map (raceline hugs its bounds, scan
+                                    # and pixel discretisation ~2 cm)
+    wheelbase: 0.3302
+    max_steer: 0.4189
+    near_radius: 0.5                # m around the car where only near_margin is required, so a
+    near_margin: 0.02               # car already inside the margin can still plan its way out
+    rejoin_tol: 0.15                # m off the raceline -> plan a smooth rejoin
+    hold_cycles: 3                  # keep planning this many scans after the gate frees
+
+    mu: 1.0489
+    grip: 0.7                       # = optimise_raceline.py --grip
+    a_brake: 5.0
+    max_speed: 5.0
+    fallback_speed: 1.0
+    debug_markers: true
+
+    frenet:
+      ds: 0.1
+      d_step: 0.1
+      end_stations: [2.0, 3.0, 4.0, 5.0]
+      w_offset: 3.0
+      w_smooth: 2.0
+      w_consist: 0.5
+      w_prox: 5.0
+      prox_dist: 0.5
+
+    rrt:
+      ds: 0.1
+      max_iters: 1000
+      time_budget: 0.05             # s per cycle (scan period is 0.1 s at 10 Hz)
+      max_step: 0.5
+      neighbour_radius: 1.0
+      goal_bias: 0.1
+      goal_tol: 0.3
+      edge_res: 0.05
+      turn_slack: 1.5
+      stop_at_first: false
+      seed: 42                      # -1 = new random sequence each run

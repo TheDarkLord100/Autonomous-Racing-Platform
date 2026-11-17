@@ -6,9 +6,12 @@ Global planner (offline): track centreline CSV -> optimised raceline CSV.
   Each pass is one sparse QP in the lateral offsets alpha_i along the reference normals,
   solved with OSQP. --iters N > 1 re-linearises around the previous solution (iterative
   variant): resample evenly, recompute normals, ray-cast widths to the ORIGINAL walls, solve.
-  Then a friction-circle velocity profile (flying lap).
+  Wall clearance is a HARD requirement: after the passes, the last QP is re-solved with
+  bounds tightened wherever the TRUE (shortest) distance to a wall is below car half-width
+  + margin, until every point clears. A line that still fails is never written.
+  Then a friction-circle velocity profile (flying lap) using only --grip of mu*g.
 Input:   data/<track>/<map>/extraction/<track>_<map>_centreline.csv   (x, y, w_right, w_left)
-Output:  data/<track>/<map>/raceline/<track>_<map>_<tag>.csv      tag = method or method_iter
+Output:  data/<track>/<map>/raceline/<track>_<map>_<tag>.csv      tag = method[_iter][_suffix]
          data/<track>/<map>/plots/<track>_<map>_raceline_<tag>.png
 Raceline CSV columns, map frame, ROS yaw convention (psi = 0 along +x, CCW positive):
   s_m, x_m, y_m, psi_rad, kappa_radpm, vx_mps, ax_mps2, w_left_m, w_right_m
@@ -63,6 +66,7 @@ def ray_dist(p, d, poly, max_r=10.0, chunk=256):
         out[i:i + chunk] = np.where(ok, t, np.inf).min(axis=1)
     return np.minimum(out, max_r)
 
+
 def poly_dist(p, poly, chunk=256):
     """True shortest distance from each point p to the closed polyline poly."""
     a = poly
@@ -84,15 +88,16 @@ def cyclic_diff(n, order):
     return (S - I) if order == 1 else (S - 2 * I + S.T)
 
 
-def solve_offsets(xy, wl, wr, nl, method, half_width, buffer=0.0):
-    """min ||D (p + diag(alpha) n)||^2  s.t.  lo <= alpha <= hi, as an OSQP problem."""
+def solve_offsets(xy, wl, wr, nl, method, half_width, buf_l=0.0, buf_r=0.0):
+    """min ||D (p + diag(alpha) n)||^2  s.t.  lo <= alpha <= hi, as an OSQP problem.
+    buf_l / buf_r: extra bound tightening per side, scalar or one value per point."""
     n = len(xy)
     D = cyclic_diff(n, 2 if method == 'mincurv' else 1)
     M = (D.T @ D).tocsc()
     Nx, Ny = sparse.diags(nl[:, 0]), sparse.diags(nl[:, 1])
     P = 2 * (Nx @ M @ Nx + Ny @ M @ Ny)
     q = 2 * (Nx @ (M @ xy[:, 0]) + Ny @ (M @ xy[:, 1]))
-    lo, hi = -(wr - half_width - buffer), (wl - half_width - buffer)
+    lo, hi = -(wr - half_width - buf_r), (wl - half_width - buf_l)
 
     if np.any(lo > hi):
         bad = np.flatnonzero(lo > hi)
@@ -106,6 +111,39 @@ def solve_offsets(xy, wl, wr, nl, method, half_width, buffer=0.0):
     t0 = time.perf_counter()
     res = prob.solve()
     return res.x, res.info.status, res.info.iter, time.perf_counter() - t0, lo, hi
+
+
+def enforce_clearance(ref_pts, nl_r, wl_r, wr_r, left_b, right_b, half, method,
+                      base_buf, dense_step, max_rounds, tol):
+    """Hard wall clearance. Re-solve the last QP pass; measure the TRUE (shortest) distance
+    from a dense resample of the result to each wall; wherever it is below `half`, tighten
+    that point's bound by the shortfall (and its neighbours'); repeat until all points clear."""
+    n = len(ref_pts)
+    buf_l, buf_r = np.full(n, base_buf), np.full(n, base_buf)
+    for rnd in range(1, max_rounds + 1):
+        alpha, status, *_ = solve_offsets(ref_pts, wl_r, wr_r, nl_r, method, half, buf_l, buf_r)
+        if status != 'solved':
+            raise SystemExit(f'ERROR: OSQP "{status}" in clearance round {rnd}')
+        cand = ref_pts + alpha[:, None] * nl_r
+
+        s_d, p_d, _, _, L_d = resample_closed(cand, dense_step)
+        def_l = half - poly_dist(p_d, left_b)
+        def_r = half - poly_dist(p_d, right_b)
+        worst = max(def_l.max(), def_r.max())
+        print(f'[GP] clearance round {rnd}: worst shortfall {max(worst, 0.0) * 100:.1f} cm '
+              f'(left {max(def_l.max(), 0) * 100:.1f}, right {max(def_r.max(), 0) * 100:.1f})')
+        if worst <= tol:
+            return cand
+
+        idx = np.round(s_d / L_d * n).astype(int) % n           # dense point -> QP point
+        for buf, dfc in ((buf_l, def_l), (buf_r, def_r)):
+            bad = dfc > tol
+            np.maximum.at(buf, idx[bad], buf[idx[bad]] + dfc[bad] + 0.01)
+            grown = buf.copy()                                  # neighbours too: the line
+            for k in (-2, -1, 1, 2):                            # bends between QP points
+                grown = np.maximum(grown, np.roll(buf, k))
+            buf[:] = grown
+    raise SystemExit(f'ERROR: clearance not met after {max_rounds} rounds; CSV not written')
 
 
 # ------------------------------------------------------ resample + geometry ----
@@ -133,12 +171,13 @@ def resample_closed(xy, step, n=None):
 
 
 # --------------------------------------------------------- velocity profile ----
-def velocity_profile(s, kappa, L, mu, v_max, ax_max):
-    """Friction circle (a_total = mu*g) + accel/brake cap ax_max + top speed v_max.
+def velocity_profile(s, kappa, L, mu, v_max, ax_max, grip=1.0):
+    """Friction circle (a_total = grip*mu*g) + accel/brake cap ax_max + top speed v_max.
+    grip (0-1]: fraction of the tyre friction the plan may use.
     Flying lap: passes start at the slowest point so the loop closes consistently."""
     n = len(s)
     ds = np.diff(np.r_[s, L])                                   # ds[i]: i -> i+1 (wraps)
-    a_tot = mu * G
+    a_tot = grip * mu * G
     k = np.abs(kappa)
     v_lim = np.full(n, float(v_max))
     m = k > 1e-9
@@ -184,9 +223,16 @@ def main():
     ap.add_argument('--steer-max', type=float, default=0.4189, help='max steering angle [rad]')
     ap.add_argument('--damping', type=float, default=0.5, help='step size for passes >= 2 (0-1]')
     ap.add_argument('--buffer', type=float, default=0.0, help='extra QP-only bound tightening [m]')
+    ap.add_argument('--clear-tol', type=float, default=0.005, help='allowed clearance shortfall [m]')
+    ap.add_argument('--grip', type=float, default=0.7,
+                    help='fraction of mu*g the velocity profile may use (0-1]')
+    ap.add_argument('--suffix', default='', help='appended to the output tag, e.g. g070')
+    ap.add_argument('--clear-rounds', type=int, default=30, help='max bound-tightening rounds')
     a = ap.parse_args()
 
     tag = a.method if a.iters == 1 else f'{a.method}_iter'
+    if a.suffix:
+        tag += f'_{a.suffix}'
     base = DATA_DIR / a.track / a.map
     track_csv = base / 'extraction' / f'{a.track}_{a.map}_centreline.csv'
     out_dir, plot_dir = base / 'raceline', base / 'plots'
@@ -209,7 +255,7 @@ def main():
         wl_r = ray_dist(ref_pts, nl_r, left_b)
         wr_r = ray_dist(ref_pts, -nl_r, right_b)
         alpha, status, n_it, dt, lo, hi = solve_offsets(ref_pts, wl_r, wr_r, nl_r, a.method,
-                                                        half, a.buffer)
+                                                        half, a.buffer, a.buffer)
         beta = 1.0 if it == 1 else a.damping
         ref = ref_pts + beta * alpha[:, None] * nl_r
         at_b = (np.mean(alpha <= lo + 1e-3) + np.mean(alpha >= hi - 1e-3)) * 100
@@ -221,6 +267,10 @@ def main():
             print(f'[GP] converged (max |offset| < {a.tol} m)')
             break
 
+    # 1b. hard wall clearance (true shortest distance) before anything else uses the line
+    ref = enforce_clearance(ref_pts, nl_r, wl_r, wr_r, left_b, right_b, half, a.method,
+                            a.buffer, a.step, a.clear_rounds, a.clear_tol)
+
     # 2. final raceline geometry, exact wall clearances (and centreline for comparison)
     s, rxy, psi, kappa, L = resample_closed(ref, a.step)
     nl_o = left_normals(psi)
@@ -229,8 +279,8 @@ def main():
     sc, _, _, kc, Lc = resample_closed(xy, a.step)
 
     # 3. velocity profiles
-    vx, ax, lap = velocity_profile(s, kappa, L, a.mu, a.v_max, a.ax_max)
-    vxc, _, lapc = velocity_profile(sc, kc, Lc, a.mu, a.v_max, a.ax_max)
+    vx, ax, lap = velocity_profile(s, kappa, L, a.mu, a.v_max, a.ax_max, a.grip)
+    vxc, _, lapc = velocity_profile(sc, kc, Lc, a.mu, a.v_max, a.ax_max, a.grip)
 
     k_steer = np.tan(a.steer_max) / a.wheelbase
     print(f'[GP] length: centreline {Lc:.2f} m -> raceline {L:.2f} m ({(L-Lc)/Lc*100:+.2f}%)')
@@ -244,9 +294,12 @@ def main():
         j = int(np.argmin(dist))
         print(f'[GP] min true clearance {side}: {dist[j]:.3f} m at s = {s[j]:.1f} m, '
               f'(x, y) = ({rxy[j, 0]:.2f}, {rxy[j, 1]:.2f})  (target {half:.3f})')
-    if min(dl_true.min(), dr_true.min()) < half - 0.02:
-        print('  WARNING: true clearance below target by > 2 cm')
+    shortfall = half - min(dl_true.min(), dr_true.min())
+    if shortfall > a.clear_tol:
+        raise SystemExit(f'ERROR: true clearance {shortfall * 100:.1f} cm below target; '
+                         f'CSV not written')
 
+    print(f'[GP] grip {a.grip:.2f} (lateral limit {a.grip * a.mu * G:.2f} m/s²)')
     print(f'[GP] speed {vx.min():.2f}-{vx.max():.2f} m/s; lap time: centreline {lapc:.2f} s -> '
           f'{tag} {lap:.2f} s ({(lap-lapc)/lapc*100:+.1f}%)')
 
