@@ -1,0 +1,21 @@
+# Copied into simulation_bringup; edit here. Keys derived from bringup.yaml
+# (frames, topics, PF initial pose, pose source, map path) are overridden at launch.
+
+pure_pursuit:
+  ros__parameters:
+    pose_topic: /ego_racecar/odom
+    waypoints_topic: /global_waypoints
+    drive_topic: /drive
+    wheelbase: 0.3302
+    max_steer: 0.4189
+    rear_axle_offset: 0.0
+    # K = (1/C_Sf - 1/C_Sr) / (mu * g), gym params C_Sf 4.718, C_Sr 5.4562, mu 1.0489
+    understeer_gradient: 0.0028
+    lookahead_base: 0.5
+    lookahead_gain: 0.10
+    lookahead_min: 0.5
+    lookahead_max: 2.5
+    speed_mode: path
+    constant_speed: 4.0
+    speed_scale: 1.0
+    max_speed: 5.0
