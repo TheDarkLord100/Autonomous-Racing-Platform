@@ -1,13 +1,16 @@
 # Simulation scenario. One file per scenario; pick it with config:=<file>.
+# Quick overrides on the command line: localization:= odom_noise:= planner:= tf_source:= tag:=
 # Relative paths under world/stack are relative to data_root; ~ and absolute paths work too.
 # Node parameters live in config/params/; the keys the bringup derives (frames, topics,
-# PF initial pose, pose source) are overridden at launch so they always agree.
+# initial poses, odometry input, pose source) are overridden at launch so they always agree.
 
 run:
-  tag: carto_pf_frenet               # run folder name: <log_root>/<YYYYmmdd_HHMMSS>_<tag>
+  tag: auto                          # auto -> <scenario>_<method>[_noise]_<planner>
   log_root: ~/f1tenth_simulation_logs
   viz: rviz                          # rviz | foxglove
-  record_bag: true                   # bag_topics: [] -> sensible default list
+  tf_source: gym                     # gym: RViz shows the truth (car model = real car)
+                                     # localization: RViz shows what the stack believes
+  record_bag: true                   # bag_topics: [] -> default list for the localizer
   monitor: true                      # one line per lap + summary.csv
   stage_timeout: 30.0                # s; warns if a stage is still waiting after this
 
@@ -21,10 +24,11 @@ stack:                               # what the stack believes
   frame: carto_map
   tf: [0.0, 0.0, -2.879]             # pose of `frame` in the gym map frame (x, y, yaw)
   raceline: Spielberg/carto/raceline/Spielberg_carto_mincurv_iter.csv
+  carto_state: ''                    # carto only: sidecar with pbstream; '' = found next to map
 
 localization:
-  method: pf                         # gt | pf
-  odom_noise: false                  # pf only: feed the PF drifting odometry
+  method: gt                         # gt | pf | carto | scan_matching
+  odom_noise: false                  # localizers only: feed them the drifting odometry
 
 planning:
   local_planner: frenet              # passthrough | frenet | rrt
@@ -32,6 +36,8 @@ planning:
 params:                              # files in config/params/ (or absolute paths)
   sim: sim.yaml
   particle_filter: pf_params.yaml
+  scan_matching: scan_matching_params.yaml
+  carto: carto_params.yaml
   odom_noise: odom_noise_params.yaml
   local_planner: local_planner.yaml
   pure_pursuit: pure_pursuit.yaml

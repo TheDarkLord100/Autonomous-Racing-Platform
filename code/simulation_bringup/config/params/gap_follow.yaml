@@ -1,0 +1,43 @@
+# Copied into simulation_bringup; edit here. Keys derived from the bringup config
+# (topics, frames, initial pose, speeds) are overridden at launch.
+
+gap_follow_node:
+  ros__parameters:
+    # ---- Vehicle ----
+    car_width: 0.30                 # (m) physical car width -- match your chassis; half-width + 0.05 m pad sizes disparity extension and gap trimming
+    max_steering_angle_deg: 24.0    # (deg) physical steering limit -- set to your actual servo/chassis max
+
+    # ---- Scan preprocessing ----
+    max_range: 4.0                  # (m) clip lidar beyond this; also the fallback wall distance when a side probe sees nothing
+    fov_deg: 180.0                  # (deg) field of view considered, centered on front
+    disparity_threshold: 0.3        # (m) beam-to-beam jump that triggers disparity extension
+    bubble_radius: 0.35             # (m) safety bubble zeroed around the closest point
+
+    # ---- Gap finding ----
+    min_gap_points: 5               # ignore gaps smaller than this many beams
+    gap_edge_margin: 0.7            # (m) extra clearance trimmed off each gap edge beyond car half-width
+
+    # ---- Steering / corridor centering ----
+    center_gain: 0.35               # (rad per m of left/right wall imbalance) strength of centering pull
+    center_blend_angle_deg: 15.0    # (deg) FTG steering angle at which centering influence fades to zero
+    side_probe_window_deg: 8.0      # (deg) window around +-90 deg used to sample left/right wall distance
+
+    # ---- Side safety (abort a turn that would clip a wall) ----
+    side_safety_distance: 0.35      # (m) any reading closer than this on the turning side -> steer straight at min_speed
+    side_safety_probe_from_deg: 90.0   # (deg from forward) start of the probe window on the turning side
+    side_safety_probe_to_deg: 130.0    # (deg from forward) end of the probe window
+
+    # ---- Speed ----
+    max_speed: 5.0                  # (m/s) straight-line cap
+    min_speed: 3.0                  # (m/s) sharp-turn / narrow-gap floor
+    speed_scale_angle_deg: 20.0     # (deg) steering angle at which speed hits min_speed -- lower = slows down earlier for turns
+    min_safe_clearance: 0.4         # (m) gap width beyond car_width at which speed reaches max_speed; narrower gaps scale toward min_speed
+
+    # ---- Visualization (RViz debug markers) ----
+    publish_markers: false          # off by default (costs several ms per scan); enable with publish_markers:=true at launch
+    base_frame_id: 'ego_racecar/base_link'  # frame all markers are attached to
+    marker_length_min: 0.3          # (m) steering arrow length at zero steering angle
+    marker_length_max: 1.0          # (m) steering arrow length at max_steering_angle_deg
+    marker_shaft_diameter: 0.03     # (m) steering arrow shaft diameter
+    marker_head_diameter: 0.06      # (m) steering arrow head diameter
+    marker_head_length: 0.1         # (m) steering arrow head length

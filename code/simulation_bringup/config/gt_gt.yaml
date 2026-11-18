@@ -1,6 +1,7 @@
-# Baseline: perfect map, perfect pose. Stack runs on the GT map in the gym frame.
+# Baseline: perfect map. Stack runs on the GT map in the gym frame.
+# (localization still selectable: localization:=pf localizes on the GT map)
 run:
-  tag: gt_gt_frenet
+  tag: auto
 data_root: ~/f1tenth_sim_ws/src/Autonomous-Racing-Platform/data
 world:
   map: ~/f1tenth_sim_ws/f1tenth_racetracks/Spielberg/Spielberg_map

@@ -26,6 +26,8 @@ setup(
     entry_points={
         'console_scripts': [
             'run_monitor = simulation_bringup.run_monitor:main',
+            'odom_tf_broadcaster = simulation_bringup.odom_tf_broadcaster:main',
+            'localization_relay = simulation_bringup.localization_relay:main',
         ],
     },
 )

@@ -23,6 +23,13 @@
   <exec_depend>local_planner</exec_depend>
   <exec_depend>pure_pursuit</exec_depend>
   <exec_depend>particle_filter</exec_depend>
+  <exec_depend>scan_matching</exec_depend>
+  <exec_depend>cartographer_slam</exec_depend>
+  <exec_depend>cartographer_ros</exec_depend>
+  <exec_depend>gap_follow</exec_depend>
+  <exec_depend>pid_wall</exec_depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
   <exec_depend>odom_noise</exec_depend>
   <exec_depend>race_eval</exec_depend>
 

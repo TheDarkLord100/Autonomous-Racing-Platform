@@ -251,6 +251,29 @@ Visualization Manager:
       History Policy: Keep Last
       Reliability Policy: Reliable
       Value: /pf/particles
+  - Class: rviz_default_plugins/Odometry
+    Name: GT pose (truth)
+    Enabled: false
+    Value: false
+    Keep: 1
+    Position Tolerance: 0.1
+    Angle Tolerance: 0.1
+    Shape:
+      Value: Arrow
+      Color: 255; 255; 255
+      Alpha: 1
+      Shaft Length: 0.6
+      Shaft Radius: 0.03
+      Head Length: 0.2
+      Head Radius: 0.08
+    Covariance:
+      Value: false
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /ego_racecar/odom
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48

@@ -1,0 +1,50 @@
+# Copied into simulation_bringup; edit here. Keys derived from the bringup config
+# (topics, frames, initial pose, speeds) are overridden at launch.
+
+scan_matching:
+  ros__parameters:
+    # Topics and frames
+    scan_topic: /scan
+    odom_topic: /ego_racecar/odom_noisy      # from odom_noise; initial guess
+    initialpose_topic: /initialpose          # RViz "2D Pose Estimate"
+    output_odom_topic: /scan_match/odom
+    output_pose_topic: /scan_match/pose
+    output_path_topic: /scan_match/path
+    map_frame: map
+    base_frame: ego_racecar/base_link
+    publish_tf: false                        # off: avoids clashing with PF / sim TF
+    tf_child_frame: scan_match/base_link     # used only if publish_tf is true
+    path_max_length: 3000
+
+    # Pose until the first /initialpose
+    initial_pose_x: 0.0
+    initial_pose_y: 0.0
+    initial_pose_theta: 0.0
+
+    # Scan preprocessing
+    max_range: 0.0               # [m] ignore returns beyond this; 0 = use scan range_max
+    normal_length: 0.4           # [m] wall length per normal fit; 0 = Censi's j1-j2 line
+    normal_max_gap: 0.2          # [m] gap between neighbours that splits two surfaces
+
+    # PL-ICP
+    correspondence_search: jump  # jump (Censi's jump tables) | brute
+    max_iterations: 30
+    max_correspondence_dist: 0.5 # [m]
+    outlier_quantile: 0.7        # trim matches with error > mult * this quantile
+    outlier_mult: 2.0
+    outlier_min_dist: 0.02       # [m] final trimming floor (starts at max_correspondence_dist)
+    min_correspondences: 50
+    epsilon_xy: 0.001            # [m] stop when the step is smaller
+    epsilon_theta: 0.001         # [rad]
+    odom_prior_weight: 1.0       # pull translation towards odometry; decides along-track on straights; 0 = off
+    degeneracy_min_eig: 10.0     # below: straight/corridor-like, logged as degenerate (fallback only if prior is 0)
+
+    # Keyframes: 0 / 0 = match every scan against the previous one
+    kf_dist_linear: 0.0          # [m]
+    kf_dist_angular: 0.0         # [rad]
+
+    # Reject an ICP result that moves this far from the odometry guess
+    max_correction_linear: 0.5   # [m]
+    max_correction_angular: 0.3  # [rad]
+
+    odom_prior_weight: 0.25      # pull translation towards odometry; decides along-track on straights; 0 = off

@@ -1,0 +1,29 @@
+# Mapping run: gym + Cartographer in mapping mode + a reactive driver.
+# Overrides: controller:= max_speed:= odom_noise:= out_dir:= map_name:= tag:=
+run:
+  tag: auto                          # auto -> mapping_<map_name>_<controller>_<speed>mps[_noise]
+  log_root: ~/f1tenth_simulation_logs
+  viz: rviz
+  record_bag: false
+  monitor: true
+
+data_root: ~/f1tenth_sim_ws/src/Autonomous-Racing-Platform/data
+
+world:
+  map: ~/f1tenth_sim_ws/f1tenth_racetracks/Spielberg/Spielberg_map
+
+mapping:
+  map_name: Spielberg                # saved as <out_dir>/<map_name>.pbstream + <map_name>.yaml
+  out_dir: Spielberg/carto_new       # relative to data_root; a new folder so maps you use stay safe
+  odom_noise: false                  # true: map with the drifting odometry
+
+controller:
+  type: ftg                          # ftg (gap_follow) | pid (pid_wall)
+  max_speed: 3.0                     # m/s; min speed is clamped to it
+
+params:
+  sim: sim.yaml
+  carto: carto_params.yaml
+  odom_noise: odom_noise_params.yaml
+  gap_follow: gap_follow.yaml
+  pid: pid_wall.yaml

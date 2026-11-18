@@ -1,0 +1,61 @@
+diff -ru -x '*.pyc' -x __pycache__ f1tenth_gym_ros/config/sim.yaml f1tenth_gym_ros_patched/config/sim.yaml
+--- f1tenth_gym_ros/config/sim.yaml	2026-10-23 21:47:20.000000000 +0530
++++ f1tenth_gym_ros_patched/config/sim.yaml	2026-11-18 14:57:55.281769214 +0530
+@@ -116,6 +116,8 @@
+     # If true, the simulation will step using a timer callback.
+     async_mode: True
+     odom_rate_hz: 100.0
++    # false: no ground-truth map -> base_link TF (localization publishes the TF tree)
++    publish_pose_tf: true
+     scan_rate_hz: 10.0
+ 
+ foxglove:
+diff -ru -x '*.pyc' -x __pycache__ f1tenth_gym_ros/f1tenth_gym_ros/gym_bridge.py f1tenth_gym_ros_patched/f1tenth_gym_ros/gym_bridge.py
+--- f1tenth_gym_ros/f1tenth_gym_ros/gym_bridge.py	2026-10-23 14:44:49.000000000 +0530
++++ f1tenth_gym_ros_patched/f1tenth_gym_ros/gym_bridge.py	2026-11-18 14:57:55.281186227 +0530
+@@ -291,6 +291,10 @@
+         self.declare_parameter('use_sim_time_bridge', False)
+         self.declare_parameter('odom_rate_hz', 100.0)  # odom + TF + collision/lap topics
+         self.declare_parameter('scan_rate_hz', 40.0)   # LaserScan
++        # False: skip the ground-truth map -> <ns>/base_link TF, so localization can own
++        # base_link (map -> odom -> base_link, REP 105). Laser and wheel TFs still publish.
++        self.declare_parameter('publish_pose_tf', True)
++        self.publish_pose_tf = self.get_parameter('publish_pose_tf').value
+ 
+         # check num_agents
+         num_agents = self.get_parameter('num_agents').value
+@@ -850,6 +854,8 @@
+             opp.odom_in_ego_pub.publish(opp_odom)
+ 
+     def _publish_transforms(self, ts):
++        if not self.publish_pose_tf:
++            return
+         for namespace, pose in [(self.ego_namespace, self.ego_pose)] + [
+             (opp.namespace, opp.pose) for opp in self.opps
+         ]:
+diff -ru -x '*.pyc' -x __pycache__ f1tenth_gym_ros/launch/gym_bridge_launch.py f1tenth_gym_ros_patched/launch/gym_bridge_launch.py
+--- f1tenth_gym_ros/launch/gym_bridge_launch.py	2026-10-23 01:37:15.000000000 +0530
++++ f1tenth_gym_ros_patched/launch/gym_bridge_launch.py	2026-11-18 14:09:03.285033737 +0530
+@@ -141,7 +141,7 @@
+         package='rviz2',
+         executable='rviz2',
+         name='rviz',
+-        arguments=['-d', os.path.join(package_share, 'config', 'rviz', 'gym_bridge.rviz')],
++        arguments=['-d', LaunchConfiguration('rviz_config')],
+         parameters=[{'use_sim_time': use_sim_time}],
+         condition=IfCondition(use_rviz),
+     )
+@@ -325,6 +325,13 @@
+         )
+     )
+     ld.add_action(
++        DeclareLaunchArgument(
++            'rviz_config',
++            default_value=os.path.join(package_share, 'config', 'rviz', 'gym_bridge.rviz'),
++            description='RViz config used with use_rviz:=true.',
++        )
++    )
++    ld.add_action(
+         DeclareLaunchArgument(
+             'foxglove_host',
+             default_value='localhost',

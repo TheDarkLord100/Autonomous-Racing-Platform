@@ -119,6 +119,7 @@ bridge:
     # If true, the simulation will step using a timer callback.
     async_mode: True
     odom_rate_hz: 100.0
+    publish_pose_tf: true   # set by the bringup from run.tf_source
     scan_rate_hz: 10.0
 
 foxglove:
