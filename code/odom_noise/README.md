@@ -2,7 +2,7 @@
 
 Turns the simulator's perfect ground-truth odometry into drifting, repeatable wheel odometry. Shared by all localization packages so each is tested against the same odometry error.
 
-Why: `f1tenth_gym` publishes the true pose as `/ego_racecar/odom`. A localizer fed that never exercises its motion model and can never drift. Real VESC odometry has scale errors, heading drift and jitter; this node reproduces those.
+Input: the simulator's ground-truth odometry `/ego_racecar/odom`. Output: the same odometry with scale errors, heading drift and per-step noise added.
 
 ## Folder structure
 
@@ -14,7 +14,7 @@ odom_noise/
 ├── resource/odom_noise
 ├── config/odom_noise_params.yaml   noise parameters
 ├── launch/odom_noise_launch.py     starts the node (included by other packages' launch files)
-├── test/test_noise_model.py        offline tests (no ROS needed)
+├── test/                           ament lint tests (copyright, flake8, pep257)
 └── odom_noise/
     ├── noise_model.py              OdometryNoise: the error model (no ROS imports)
     └── odom_noise_node.py          ROS 2 node wrapping it
@@ -70,6 +70,6 @@ IncludeLaunchDescription(
         get_package_share_directory('odom_noise'), 'launch', 'odom_noise_launch.py')),
     launch_arguments={'use_sim_time': 'false'}.items())
 ```
-then point that package's odometry input at `/ego_racecar/odom_noisy` and add `<exec_depend>odom_noise</exec_depend>` to its `package.xml`. `particle_filter` does this with `odom_noise:=true`.
+then point that package's odometry input at `/ego_racecar/odom_noisy` and add `<exec_depend>odom_noise</exec_depend>` to its `package.xml`. `particle_filter`, `scan_matching` and `cartographer_slam` do this with `odom_noise:=true`; in `simulation_bringup` one switch (`odom_noise:=true`) starts the node and points the active localizer, the relay and the TF broadcaster at `/ego_racecar/odom_noisy`.
 
-Offline tests: `python3 -m pytest test/ -v` from the package root.
+The noise model has no ROS imports.

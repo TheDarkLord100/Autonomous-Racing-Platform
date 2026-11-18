@@ -29,22 +29,31 @@ from .tracker import ScanMatchTracker, interpolate_pose
 
 
 def yaw_from_quat(q):
+    """Return the yaw angle of a quaternion."""
     return math.atan2(2.0 * (q.w * q.z + q.x * q.y),
                       1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
 
 def fill_quat(q, yaw):
+    """Write a yaw-only rotation into a quaternion message in place."""
     q.x, q.y = 0.0, 0.0
     q.z, q.w = math.sin(0.5 * yaw), math.cos(0.5 * yaw)
 
 
 def stamp_to_sec(stamp):
+    """Return a builtin_interfaces/Time as float seconds."""
     return stamp.sec + 1e-9 * stamp.nanosec
 
 
 class ScanMatchingNode(Node):
+    """ROS 2 node: PL-ICP scan matching with odometry as the initial guess.
+
+    Publishes the pose on ``output_odom_topic``, ``output_pose_topic`` and
+    ``output_path_topic``, and optionally a TF to ``tf_child_frame``.
+    """
 
     def __init__(self):
+        """Declare parameters, create publishers, subscribers, TF and the stats timer."""
         super().__init__('scan_matching')
         p = self.declare_parameter
         # Topics and frames
@@ -132,6 +141,7 @@ class ScanMatchingNode(Node):
     # ----------------------------------------------------------- inputs ----
 
     def on_odom(self, msg):
+        """Buffer an odometry pose and process any scans it now covers."""
         p = msg.pose.pose
         self.odom_t.append(stamp_to_sec(msg.header.stamp))
         self.odom_p.append(np.array([p.position.x, p.position.y,
@@ -139,6 +149,7 @@ class ScanMatchingNode(Node):
         self.try_process()
 
     def on_initialpose(self, msg):
+        """Schedule a pose reset for the next scan and drop waiting scans."""
         if msg.header.frame_id and msg.header.frame_id != self.map_frame:
             self.get_logger().warn(
                 f'/initialpose in frame "{msg.header.frame_id}", expected '
@@ -156,6 +167,7 @@ class ScanMatchingNode(Node):
             f'theta={pose[2]:.2f}')
 
     def lookup_laser_in_base(self, laser_frame):
+        """Return the laser pose [x, y, yaw] in the base frame, or None if TF is not ready."""
         try:
             tf = self.tf_buffer.lookup_transform(self.base_frame, laser_frame,
                                                  Time())
@@ -171,6 +183,7 @@ class ScanMatchingNode(Node):
         return np.array([t.x, t.y, yaw])
 
     def on_scan(self, msg):
+        """Queue a scan (at most 3 waiting) and process the ones odometry covers."""
         self.pending_scans.append(msg)
         # If the node falls behind, drop the oldest waiting scans.
         while len(self.pending_scans) > 3:
@@ -201,6 +214,7 @@ class ScanMatchingNode(Node):
             self.process_scan(msg, t_scan)
 
     def process_scan(self, msg, t_scan):
+        """Match one scan, update the pose and publish it."""
         if self.tracker is None:
             laser_in_base = self.lookup_laser_in_base(msg.header.frame_id)
             if laser_in_base is None:
@@ -246,6 +260,7 @@ class ScanMatchingNode(Node):
     # ---------------------------------------------------------- outputs ----
 
     def publish(self, stamp, out, dt):
+        """Publish the pose, odometry (with twist from the step), path and optional TF."""
         x, y, th = out.pose
         ps = PoseStamped()
         ps.header.stamp = stamp
@@ -281,6 +296,7 @@ class ScanMatchingNode(Node):
             self.tf_broadcaster.sendTransform(tf)
 
     def log_stats(self):
+        """Log match time, iterations, degenerate matches, fallbacks, skipped scans; reset."""
         s = self.stats
         if s['n'] == 0:
             return
@@ -297,6 +313,7 @@ class ScanMatchingNode(Node):
 
 
 def main(args=None):
+    """Run the scan-matching node until shutdown."""
     rclpy.init(args=args)
     node = ScanMatchingNode()
     try:

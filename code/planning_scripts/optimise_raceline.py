@@ -45,6 +45,7 @@ def load_track(path):
 
 
 def left_normals(psi):
+    """Return unit left normals for headings ``psi``."""
     return np.c_[-np.sin(psi), np.cos(psi)]
 
 
@@ -188,6 +189,7 @@ def velocity_profile(s, kappa, L, mu, v_max, ax_max, grip=1.0):
     v = v_lim[order].copy()
 
     def ax_avail(vi, ki):                                       # grip left after cornering
+        """Return the longitudinal acceleration available at speed ``vi`` and curvature ``ki``."""
         return min(ax_max, np.sqrt(max(a_tot ** 2 - (vi ** 2 * ki) ** 2, 0.0)))
 
     for i in range(n - 1):                                      # forward: acceleration
@@ -206,6 +208,7 @@ def velocity_profile(s, kappa, L, mu, v_max, ax_max, grip=1.0):
 
 # ------------------------------------------------------------------- main ----
 def main():
+    """Parse arguments, optimise the raceline, check wall clearance and write the CSV."""
     ap = argparse.ArgumentParser()
     ap.add_argument('--track', default='Spielberg')
     ap.add_argument('--map', default='carto', help='map folder under data/<track>/, e.g. carto, GT')

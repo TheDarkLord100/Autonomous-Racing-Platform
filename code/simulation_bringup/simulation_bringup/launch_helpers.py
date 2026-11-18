@@ -16,6 +16,7 @@ PKG = 'simulation_bringup'
 
 
 def say(msg, color='36'):
+    """Return a LogInfo action that prints a coloured ``[bringup]`` message."""
     return LogInfo(msg=f'\033[{color}m[bringup] {msg}\033[0m')
 
 
@@ -31,12 +32,14 @@ def after_log(target, target_name, pattern, actions, label, timeout):
     state = {'done': False}
 
     def on_output(event):
+        """Return the stage actions the first time the pattern appears in the output."""
         if state['done'] or pattern not in event.text.decode(errors='ignore'):
             return None
         state['done'] = True
         return [say(label)] + actions
 
     def check(_context):
+        """Return a warning message if the pattern has not appeared by the timeout."""
         if not state['done']:
             return [say(f'still waiting for "{pattern}" from {target_name} after '
                         f'{timeout:.0f} s; check its log in the run folder', '33')]
@@ -91,6 +94,7 @@ def gym(cfg, run_dir, rviz_file):
 
 
 def static_tf(x, y, yaw, parent, child):
+    """Return a static_transform_publisher node for ``parent -> child``."""
     return Node(package='tf2_ros', executable='static_transform_publisher',
                 name=f'tf_{parent}_to_{child}'.replace('/', '_'), output='log',
                 arguments=['--x', str(x), '--y', str(y), '--yaw', str(yaw),
@@ -98,22 +102,26 @@ def static_tf(x, y, yaw, parent, child):
 
 
 def odom_noise(cfg):
+    """Return the odom_noise node with its resolved parameter file."""
     return node('odom_noise', 'odom_noise_node', 'odom_noise', [cfg['params']['odom_noise']])
 
 
 def monitor(cfg, run_dir):
+    """Return the run_monitor node writing ``summary.csv`` into the run folder."""
     return node(PKG, 'run_monitor', 'run_monitor',
                 [{'summary_path': str(run_dir / 'summary.csv'), 'tag': cfg['run']['tag']}],
                 screen=True)
 
 
 def bag(cfg, run_dir):
+    """Return a ``ros2 bag record`` process for ``run.bag_topics`` into the run folder."""
     from launch.actions import ExecuteProcess
     return ExecuteProcess(cmd=['ros2', 'bag', 'record', '-o', str(run_dir / 'bag')] +
                           cfg['run']['bag_topics'], name='bag_record', output='log')
 
 
 def cartographer_node(lua, odom_topic, extra_args=()):
+    """Return the cartographer_node process with the given lua file and odometry topic."""
     config_dir = os.path.join(get_package_share_directory('cartographer_slam'), 'config')
     return node('cartographer_ros', 'cartographer_node', 'cartographer_node',
                 arguments=['-configuration_directory', config_dir,
@@ -122,6 +130,7 @@ def cartographer_node(lua, odom_topic, extra_args=()):
 
 
 def carto_node(cfg, overrides, lua):
+    """Return the carto_node wrapper with its parameter file, overrides and lua file."""
     config_dir = os.path.join(get_package_share_directory('cartographer_slam'), 'config')
     return node('cartographer_slam', 'carto_node', 'carto_node',
                 [cfg['params']['carto'], dict(overrides, configuration_directory=config_dir,

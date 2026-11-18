@@ -34,6 +34,7 @@ class PIDNode(Node):
     """Wire up the wall-following pipeline and own the ROS I/O."""
 
     def __init__(self):
+        """Declare parameters, build the modules, create publishers and the scan subscriber."""
         super().__init__('pid_node')
 
         # ---- Declare parameters (override via YAML or --ros-args -p) ----
@@ -87,6 +88,7 @@ class PIDNode(Node):
     # Parameters / module wiring
     # ------------------------------------------------------------------
     def _build_modules(self):
+        """Create the error, PID, speed, steering and marker modules from the parameters."""
         wall_side = self.get_parameter('wall_side').value.lower()
         if wall_side not in ('left', 'right'):
             self.get_logger().warn(f"wall_side='{wall_side}' invalid, defaulting to 'left'")
@@ -137,6 +139,7 @@ class PIDNode(Node):
         self.visualizer = MarkerVisualizer(viz_cfg)
 
     def _on_param_update(self, params):
+        """Rebuild the modules after a parameter change."""
         self._build_modules()
         self.get_logger().info('Params updated: ' + ', '.join(f'{p.name}={p.value}' for p in params))
     
@@ -144,6 +147,7 @@ class PIDNode(Node):
     # Callback
     # ------------------------------------------------------------------
     def scan_callback(self, scan_msg: LaserScan):
+        """Run one wall-following step on a scan and publish the drive command."""
         self.angle_min = scan_msg.angle_min
         self.angle_increment = scan_msg.angle_increment
         self.num_ranges = len(scan_msg.ranges)
@@ -166,6 +170,7 @@ class PIDNode(Node):
                                scan_msg.header.stamp)
 
     def _publish_drive(self, steering_angle, velocity):
+        """Publish an AckermannDriveStamped with the given steering and speed."""
         drive_msg = AckermannDriveStamped()
         drive_msg.header.stamp = self.get_clock().now().to_msg()
         drive_msg.header.frame_id = 'base_link'
@@ -174,6 +179,7 @@ class PIDNode(Node):
         self.drive_pub.publish(drive_msg)
 
     def _publish_markers(self, a, b, error, alpha, Dt, steering_angle, velocity, stamp):
+        """Publish the ray, target-line, status-text and steering-arrow markers."""
         debug_markers = MarkerArray()
         debug_markers.markers.append(
             self.visualizer.make_ray_marker(
@@ -195,6 +201,7 @@ class PIDNode(Node):
 
 
 def main(args=None):
+    """Run the PID wall-following node until shutdown."""
     rclpy.init(args=args)
     node = PIDNode()
     try:

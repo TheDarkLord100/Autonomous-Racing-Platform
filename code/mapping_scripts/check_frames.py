@@ -26,6 +26,7 @@ def wall_surface(occ, free):
 
 
 def main():
+    """Parse arguments and save the GT/SLAM wall overlay figures in the simulator frame."""
     ap = argparse.ArgumentParser()
     ap.add_argument('--track', default='Spielberg')
     ap.add_argument('--gt-dir', default='GT', help='ground-truth map folder under data/<track>/')

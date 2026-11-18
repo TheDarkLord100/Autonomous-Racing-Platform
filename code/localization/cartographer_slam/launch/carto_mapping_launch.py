@@ -18,7 +18,12 @@ DEFAULT_MAP_DIR = os.path.expanduser('~/f1tenth_sim_ws/src/Autonomous-Racing-Pla
 
 
 def _nodes(context):
+    """Build the Cartographer mapping actions from the resolved launch arguments.
+
+    Raises RuntimeError if ``map_name`` is empty.
+    """
     def arg(name):
+        """Return the value of a launch argument."""
         return LaunchConfiguration(name).perform(context)
 
     share = get_package_share_directory('cartographer_slam')
@@ -80,6 +85,7 @@ def _nodes(context):
 
 
 def generate_launch_description():
+    """Declare the launch arguments and defer node creation to ``_nodes``."""
     share = get_package_share_directory('cartographer_slam')
     return LaunchDescription([
         DeclareLaunchArgument('params_file',

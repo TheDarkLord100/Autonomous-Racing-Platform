@@ -1,3 +1,5 @@
+"""Launch the scan-matching node, optionally with the odom_noise node."""
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -10,6 +12,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    """Declare the launch arguments and start scan matching (and odom_noise if set)."""
     pkg = get_package_share_directory('scan_matching')
     default_params = os.path.join(pkg, 'config', 'scan_matching_params.yaml')
 

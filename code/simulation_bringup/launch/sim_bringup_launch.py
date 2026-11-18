@@ -30,6 +30,12 @@ from simulation_bringup.launch_helpers import (PKG, after_log, bag, carto_node,
 
 
 def _setup(context):
+    """Resolve the scenario config and return the staged launch actions.
+
+    Stage 1 starts the simulator, maps and TF; later stages start the localizer, the
+    raceline publisher, local planner, pure pursuit and the loggers, each after a log line
+    from the previous stage.
+    """
     share = Path(get_package_share_directory(PKG))
     arg = LaunchConfiguration('config').perform(context)
     config_path = Path(arg) if os.path.isabs(arg) else share / 'config' / arg
@@ -117,6 +123,7 @@ def _setup(context):
 
 
 def generate_launch_description():
+    """Declare the scenario overrides and defer the actions to ``_setup``."""
     return LaunchDescription([
         DeclareLaunchArgument('config', default_value='bringup.yaml',
                               description='scenario file in config/, or an absolute path'),

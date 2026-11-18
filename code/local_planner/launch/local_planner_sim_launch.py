@@ -14,6 +14,11 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    """Start the raceline publisher, local planner, pure pursuit and lap logger.
+
+    The simulator must already be running. Launch arguments select the raceline CSV,
+    its frame, the planner, the pose topic and the lap logger.
+    """
     lp_cfg = os.path.join(get_package_share_directory('local_planner'), 'config',
                           'local_planner_sim.yaml')
     pp_cfg = os.path.join(get_package_share_directory('pure_pursuit'), 'config', 'pp_sim.yaml')

@@ -22,6 +22,7 @@ class ScanProcessorConfig:
     """Tunables for turning a raw scan into free space (meters / degrees)."""
 
     def __init__(self):
+        """Set the default scan-processing settings."""
         self.max_range = 4.0            # clip lidar beyond this (m)
         self.fov_deg = 180.0            # field of view considered, centered on front
         self.bubble_radius = 0.35       # safety bubble around closest point (m)
@@ -30,8 +31,10 @@ class ScanProcessorConfig:
 
 
 class ScanProcessor:
+    """Clip and crop the scan, extend disparities and apply the safety bubble."""
 
     def __init__(self, config: ScanProcessorConfig):
+        """Store the configuration."""
         self.config = config
 
     def preprocess(self, raw_ranges, angle_min, angle_increment):

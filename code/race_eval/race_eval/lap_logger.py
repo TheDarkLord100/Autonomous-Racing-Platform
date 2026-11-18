@@ -34,10 +34,12 @@ from race_msgs.msg import WaypointArray
 
 
 def yaw_from_quat(q):
+    """Return the yaw angle of a quaternion."""
     return math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
 
 def apply_tf(tf, x, y, yaw):
+    """Apply a TransformStamped to a 2D pose (x, y, yaw)."""
     t, th = tf.transform.translation, yaw_from_quat(tf.transform.rotation)
     c, s = math.cos(th), math.sin(th)
     return t.x + c * x - s * y, t.y + s * x + c * y, yaw + th
@@ -48,7 +50,14 @@ COLUMNS = ['t', 'lap', 's', 'x', 'y', 'e_lat', 'v_plan', 'v_act', 'v_cmd', 'stee
 
 
 class LapLogger(Node):
+    """ROS 2 node: log the car's pose against the raceline to CSV, one row per pose message.
+
+    Also counts laps on start-line crossings, logs a per-lap summary and warns when the car
+    stops after having moved.
+    """
+
     def __init__(self):
+        """Declare parameters and create subscribers and the TF listener."""
         super().__init__('lap_logger')
         defaults = {
             'pose_topic': '/ego_racecar/odom',
@@ -87,6 +96,7 @@ class LapLogger(Node):
 
     # ---------- path + file ----------
     def on_waypoints(self, msg):
+        """Store the raceline and open a new log file named after its source."""
         wp = msg.waypoints
         if len(wp) < 2:
             return
@@ -105,6 +115,7 @@ class LapLogger(Node):
         self.reset_lap_state()
 
     def open_log(self, source):
+        """Open ``<log_dir>/<source>[_<tag>]_<time>.csv`` and write the header."""
         if self.file:
             self.file.close()
         log_dir = Path(self.p['log_dir']).expanduser()
@@ -118,6 +129,7 @@ class LapLogger(Node):
         self.get_logger().info(f'logging to {path}')
 
     def reset_lap_state(self):
+        """Reset the lap counter, lap timer and stop detection."""
         self.lap = 0                   # 0 = out-lap from spawn until the first line crossing
         self.lap_t0 = None
         self.prev_s = None
@@ -127,16 +139,23 @@ class LapLogger(Node):
         self.reset_lap_stats()
 
     def reset_lap_stats(self):
+        """Reset the per-lap error, speed and wall-gap statistics."""
         self.e_max, self.e_max_s, self.e_sq, self.n = 0.0, 0.0, 0.0, 0
         self.over_max, self.over_max_s = 0.0, 0.0
         self.gap_min, self.gap_min_s, self.gap_min_side = float('inf'), 0.0, ''
 
     def on_drive(self, msg):
+        """Store the latest commanded speed and steering angle."""
         self.v_cmd = msg.drive.speed
         self.steer_cmd = msg.drive.steering_angle
 
     # ---------- geometry ----------
     def nearest(self, x, y):
+        """Return the index of the raceline point nearest to (x, y).
+
+        Searches a window around the previous index; falls back to a full search at start
+        or when the window minimum is farther than ``relocalise_dist``.
+        """
         n = len(self.xy)
         if self.idx is not None:
             cand = np.arange(self.idx - self.p['search_back'],
@@ -152,6 +171,7 @@ class LapLogger(Node):
 
     # ---------- per pose ----------
     def on_pose(self, msg):
+        """Compute the row for one pose, update lap statistics and write it."""
         if self.xy is None:
             return
         pp = msg.pose.pose
@@ -208,6 +228,7 @@ class LapLogger(Node):
             self.file.flush()
 
     def check_lap(self, t, s_now):
+        """Detect a start-line crossing, log the finished lap and start the next."""
         crossed = self.prev_s is not None and (self.prev_s - s_now) > self.lap_len / 2
         self.prev_s = s_now
         if not crossed:
@@ -225,6 +246,7 @@ class LapLogger(Node):
         self.file.flush()
 
     def check_stopped(self, t, v_act, s_now):
+        """Warn once if the car stays below ``stop_speed`` for ``stop_time`` after moving."""
         if v_act > 1.0:
             self.moving = True
             self.slow_since = None
@@ -240,12 +262,14 @@ class LapLogger(Node):
             self.file.flush()
 
     def destroy_node(self):
+        """Close the log file and destroy the node."""
         if self.file:
             self.file.close()
         super().destroy_node()
 
 
 def main(args=None):
+    """Run the lap logger node until shutdown."""
     rclpy.init(args=args)
     node = LapLogger()
     try:

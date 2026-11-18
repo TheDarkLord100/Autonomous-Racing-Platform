@@ -22,7 +22,14 @@ MODES = ('pass', 'frenet', 'rrt', 'rrt_raw', 'fallback')
 
 
 class RunMonitor(Node):
+    """ROS 2 node: per-lap run summary from the simulator and local-planner topics.
+
+    Counts collisions and local-planner modes, records compute time, and on each new lap
+    logs a summary line and appends a row to ``summary_path``.
+    """
+
     def __init__(self):
+        """Declare parameters, open the summary CSV and create the subscribers."""
         super().__init__('run_monitor')
         self.declare_parameter('summary_path', '')
         self.declare_parameter('tag', '')
@@ -54,21 +61,26 @@ class RunMonitor(Node):
         self.get_logger().info(f'run "{self.tag}" running; one line per lap below')
 
     def on_lap_time(self, msg):
+        """Store the last lap time."""
         self.last_lap_time = float(msg.data)
 
     def on_mode(self, msg):
+        """Count one local-planner mode message."""
         self.modes[msg.data] += 1
 
     def on_ms(self, msg):
+        """Record one local-planner compute time."""
         self.ms.append(float(msg.data))
 
     def on_collision(self, msg):
+        """Count a collision on the rising edge of the collision flag."""
         if msg.data and not self.in_collision:
             self.collisions += 1
             self.get_logger().error(f'COLLISION #{self.collisions} (lap {self.lap_count + 1})')
         self.in_collision = bool(msg.data)
 
     def on_lap_count(self, msg):
+        """On a new lap, log the lap summary and write a CSV row."""
         if msg.data <= self.lap_count:
             return
         self.lap_count = msg.data
@@ -92,12 +104,14 @@ class RunMonitor(Node):
         self.ms = []
 
     def destroy_node(self):
+        """Close the summary file and destroy the node."""
         if self.file:
             self.file.close()
         super().destroy_node()
 
 
 def main(args=None):
+    """Run the run monitor node until shutdown."""
     rclpy.init(args=args)
     node = RunMonitor()
     try:

@@ -25,6 +25,7 @@ from visualization_msgs.msg import Marker
 
 
 def yaw_from_quat(q):
+    """Return the yaw angle of a quaternion."""
     return math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
 
@@ -36,7 +37,10 @@ def apply_tf(tf, x, y, yaw):
 
 
 class PurePursuit(Node):
+    """ROS 2 node: track a WaypointArray with pure pursuit and publish /drive."""
+
     def __init__(self):
+        """Declare parameters, create publishers, subscribers and the TF listener."""
         super().__init__('pure_pursuit')
         defaults = {
             'pose_topic': '/ego_racecar/odom',
@@ -81,6 +85,7 @@ class PurePursuit(Node):
 
     # ---------- path ----------
     def on_waypoints(self, msg):
+        """Store a received path (positions, speeds, arc length) for tracking."""
         wp = msg.waypoints
         if len(wp) < 2:
             self.get_logger().error('received fewer than 2 waypoints')
@@ -100,6 +105,11 @@ class PurePursuit(Node):
                                f'{self.lap_len:.2f} m, frame "{self.frame}"')
 
     def nearest(self, x, y):
+        """Return the index of the path point nearest to (x, y).
+
+        Searches a window around the previous index; falls back to a full search at start
+        or when the window minimum is farther than ``relocalise_dist``.
+        """
         n = len(self.xy)
         if self.idx is not None:
             cand = np.arange(self.idx - self.p['search_back'],
@@ -114,12 +124,14 @@ class PurePursuit(Node):
         return self.idx
 
     def point_at(self, s_query):
+        """Return the path point at arc length ``s_query`` (wrapped to one lap)."""
         s_q = s_query % self.lap_len
         return (float(np.interp(s_q, self.s_ext, self.xy_ext[:, 0])),
                 float(np.interp(s_q, self.s_ext, self.xy_ext[:, 1])))
 
     # ---------- control ----------
     def on_pose(self, msg):
+        """Compute and publish the steering and speed command for a new pose."""
         if self.xy is None:
             return
         pp = msg.pose.pose
@@ -169,6 +181,7 @@ class PurePursuit(Node):
         self.publish_marker(tx, ty)
 
     def publish_marker(self, x, y):
+        """Publish the lookahead target as a sphere marker."""
         m = Marker()
         m.header.frame_id = self.frame
         m.header.stamp = self.get_clock().now().to_msg()
@@ -181,6 +194,7 @@ class PurePursuit(Node):
 
 
 def main(args=None):
+    """Run the pure-pursuit node until shutdown."""
     rclpy.init(args=args)
     node = PurePursuit()
     try:

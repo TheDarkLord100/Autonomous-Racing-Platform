@@ -20,7 +20,14 @@ N_COLS = 9
 
 
 class RacelinePublisher(Node):
+    """Load a raceline CSV once and publish it as a latched WaypointArray and Path."""
+
     def __init__(self):
+        """Declare parameters, load and check the CSV, and publish both messages.
+
+        Raises RuntimeError if ``csv_path`` is empty or the CSV does not have the expected
+        number of columns.
+        """
         super().__init__('raceline_publisher')
         self.declare_parameter('csv_path', '')
         self.declare_parameter('frame_id', 'map')
@@ -55,6 +62,7 @@ class RacelinePublisher(Node):
 
     @staticmethod
     def to_waypoints(data, frame_id, stamp, source):
+        """Convert CSV rows to a race_msgs/WaypointArray."""
         msg = WaypointArray()
         msg.header.frame_id = frame_id
         msg.header.stamp = stamp
@@ -67,6 +75,7 @@ class RacelinePublisher(Node):
 
     @staticmethod
     def to_path(data, frame_id, stamp):
+        """Convert CSV rows to a nav_msgs/Path (position and heading only)."""
         msg = Path()
         msg.header.frame_id = frame_id
         msg.header.stamp = stamp
@@ -82,6 +91,7 @@ class RacelinePublisher(Node):
 
 
 def main(args=None):
+    """Run the raceline publisher node until shutdown."""
     rclpy.init(args=args)
     node = RacelinePublisher()
     try:

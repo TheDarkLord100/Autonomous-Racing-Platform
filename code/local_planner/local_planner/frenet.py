@@ -37,6 +37,8 @@ def quintic_coeffs(d0, dd0, ddd0, df, sf):
 
 @dataclass
 class FrenetResult:
+    """Chosen Frenet candidate and planning statistics."""
+
     path: np.ndarray            # (N, 2) best path in base_link, None if nothing feasible
     s: np.ndarray               # (N,) arc length along the reference
     d_f: float
@@ -48,12 +50,21 @@ class FrenetResult:
 
 
 class FrenetPlanner:
+    """Sample quintic lateral-offset paths from the raceline and pick the cheapest."""
+
     def __init__(self, p: dict):
+        """Store the parameter dict and reset the previous end offset."""
         self.p = p
         self.prev_df = 0.0
 
     def plan(self, ref: RefPath, obstacles: Obstacles, threshold: float,
              kappa_max: float) -> FrenetResult:
+        """Plan a path on ``ref`` that keeps ``threshold`` clearance from the scan.
+
+        Candidates end at each configured end station with lateral offsets sampled inside
+        the scan-derived bounds. Candidates that violate the clearance or exceed
+        ``kappa_max`` are rejected; the remaining one with the lowest cost is returned.
+        """
         p = self.p
         H = min(p['horizon'], ref.length)
         s = np.arange(0.0, H + 1e-9, p['ds'])

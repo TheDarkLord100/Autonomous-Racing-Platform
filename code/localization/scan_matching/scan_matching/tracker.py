@@ -46,7 +46,10 @@ def interpolate_pose(times, poses, t):
 
 
 class StepResult:
+    """Result of one tracker step (one scan)."""
+
     def __init__(self):
+        """Initialise an empty step result."""
         self.pose = None            # base pose in map after this scan
         self.base_delta = None      # base motion since the previous scan
         self.icp = None             # IcpResult (None for the first scan)
@@ -56,6 +59,7 @@ class StepResult:
 
 
 class ScanMatchTracker:
+    """Chain scan-to-keyframe PL-ICP matches into a pose, with odometry as the initial guess."""
 
     def __init__(self, laser_in_base, scan_params=None, icp_params=None,
                  kf_dist_linear=0.0, kf_dist_angular=0.0,
@@ -88,6 +92,7 @@ class ScanMatchTracker:
         self.prev_pose = None
 
     def _set_keyframe(self, scan, odom_pose):
+        """Make ``scan`` the reference keyframe at the current pose and odometry."""
         self.kf_scan = scan
         self.kf_pose = self.pose.copy()
         self.kf_odom = np.array(odom_pose, dtype=float)

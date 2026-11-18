@@ -17,7 +17,10 @@ from tf2_ros import TransformBroadcaster
 
 
 class OdomTfBroadcaster(Node):
+    """ROS 2 node: broadcast ``odom -> base_link`` TF from an odometry topic."""
+
     def __init__(self):
+        """Declare parameters and create the broadcaster and subscriber."""
         super().__init__('odom_tf_broadcaster')
         self.declare_parameter('odom_topic', '/ego_racecar/odom')
         self.declare_parameter('odom_frame', 'odom')
@@ -30,6 +33,7 @@ class OdomTfBroadcaster(Node):
         self.get_logger().info(f'{topic} -> TF {self.odom_frame} -> {self.base_frame}')
 
     def on_odom(self, msg):
+        """Broadcast the odometry pose as a transform."""
         t = TransformStamped()
         t.header.stamp = msg.header.stamp
         t.header.frame_id = self.odom_frame
@@ -42,6 +46,7 @@ class OdomTfBroadcaster(Node):
 
 
 def main(args=None):
+    """Run the TF broadcaster node until shutdown."""
     rclpy.init(args=args)
     node = OdomTfBroadcaster()
     try:

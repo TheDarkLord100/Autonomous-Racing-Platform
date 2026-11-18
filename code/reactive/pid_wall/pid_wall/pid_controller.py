@@ -19,7 +19,10 @@ constant across speeds. gain_ref_velocity <= 0 disables scheduling.
 
 
 class PIDControllerConfig:
+    """Gains, limits and gain-scheduling settings for PIDController."""
+
     def __init__(self):
+        """Set the default gains and limits."""
         self.kp = 1.2
         self.ki = 0.0
         self.kd = 0.15
@@ -32,13 +35,19 @@ class PIDControllerConfig:
 
 
 class PIDController:
+    """PID on the wall-distance error with speed-scheduled gains."""
 
     def __init__(self, config: PIDControllerConfig):
+        """Store the configuration and reset the integral and previous error."""
         self.config = config
         self.integral = 0.0
         self.prev_error = None  # no derivative until we have a previous sample
 
     def gain_scale(self, velocity):
+        """Return the gain scale (gain_ref_velocity / velocity)^2, clamped.
+
+        Returns 1.0 when scheduling is disabled or the velocity is near zero.
+        """
         c = self.config
         if c.gain_ref_velocity <= 0.0 or velocity <= 1e-3:
             return 1.0
@@ -46,6 +55,7 @@ class PIDController:
         return max(c.gain_scale_min, min(c.gain_scale_max, scale))
 
     def compute(self, error, dt, velocity):
+        """Return the steering angle for ``error`` after one PID step of length ``dt``."""
         if dt <= 0.0:
             dt = 1e-3
 

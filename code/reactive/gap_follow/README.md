@@ -34,7 +34,9 @@ ros2 param set /gap_follow_node publish_markers true
 ros2 param dump /gap_follow_node     # current values, to copy back into the YAML
 ```
 
-Markers are off by default because building hundreds of `Point` messages per scan in Python takes several milliseconds. When they are on, they are built after `/drive` is published, so they never delay the control output.
+Markers are off by default. When they are on, they are built after `/drive` is published.
+
+For mapping runs, `simulation_bringup`'s `mapping_bringup_launch.py` starts this controller with `controller:=ftg max_speed:=<m/s>` (its minimum speed is clamped to the maximum).
 
 ---
 
@@ -110,7 +112,7 @@ n = floor(atan2(car_half_width, r_near) / angle_increment) + 1
 each of those n beams on the far side: r = min(r, r_near)
 ```
 
-Disparities are detected on the original ranges, and the extensions are written to a separate output. That way, an extended edge is never mistaken for a new disparity in the same pass, so each extension covers exactly its own `n` beams. The loop is sequential plain Python (about 1080 beams), and the result is written back into the array.
+Disparities are detected on the original ranges, and the extensions are written to a separate output, so each extension covers exactly its own `n` beams. The loop is sequential plain Python, and the result is written back into the array.
 
 ### 4. Safety bubble: `find_closest_point` + `zero_bubble`
 
@@ -128,7 +130,7 @@ A gap is the longest contiguous run of beams with r > 0 that are in the FOV; if 
 
 ### 6. Edge trimming: `GapFinder.trim_gap_edges`
 
-Each end of the gap is eroded so the target can't sit right next to the wall that bounds it. Each side is sized from its own boundary range, because in a hairpin the two walls are often at very different distances:
+Each end of the gap is eroded. Each side is sized from its own boundary range:
 
 ```
 trim = floor(atan2(car_half_width + gap_edge_margin, r_edge) / angle_increment)   # r_edge ≤ 0.05 → 0.5 m
@@ -139,7 +141,7 @@ If the two trims together would leave fewer than `min_gap_points` beams, both ar
 ### 7. Target and steering: `TargetSelector`
 
 - **Target:** the farthest beam in the trimmed gap. If several beams share the maximum range, it takes the middle one of those, so `ftg_angle = angle[target]`.
-- **Corridor centering.** On gentle sections the car is pulled towards the middle of the corridor. The pull fades out as the turn gets sharper, so sharp turns are left entirely to the gap target:
+- **Corridor centering.** On gentle sections the car is pulled towards the middle of the corridor. The pull fades out as the turn gets sharper and is zero beyond `center_blend_angle_deg`:
 
 ```
 w           = 1 − min(|ftg_angle| / center_blend_angle_deg, 1)
@@ -167,7 +169,7 @@ v_gap     = min_speed + (max_speed − min_speed) · min(clearance / min_safe_cl
 speed     = min(v_steer, v_gap)       # or min_speed when the side safety override fired
 ```
 
-The gap-width limit matters because a narrow, needle-shaped opening (a switchback apex) may need only a modest steering angle, yet still needs a hard slowdown. The angle-based limit alone can't tell. The width is measured in x/y, not as an angle, because a tight opening can span a wide angle.
+The gap width is measured in x/y, not as an angle.
 
 ### 10. Publish and timing
 
@@ -203,12 +205,3 @@ All are in `config/params.yaml`, with a comment on each.
 | Side safety | `side_safety_distance`, `side_safety_probe_from_deg`, `side_safety_probe_to_deg` | When a turn is aborted, and where to look |
 | Speed | `max_speed`, `min_speed`, `speed_scale_angle_deg`, `min_safe_clearance` | Speed range and the two speed limits |
 | Visualization | `publish_markers`, `base_frame_id`, `marker_length_min/max`, `marker_shaft_diameter`, `marker_head_diameter`, `marker_head_length` | Marker toggle, frame and arrow size |
-
-### Current tuning
-
-Tuned in `f1tenth_gym` (Jazzy bridge, async mode) on **Spielberg**, with the scan at **10 Hz** (to match the car's LiDAR) and odom at 100 Hz:
-
-- `max_speed 5.0`, `min_speed 3.0`. There are some oscillations in corners, but it recovers and completes laps.
-- `gap_edge_margin 0.7`, `center_gain 0.35`, `center_blend_angle_deg 15`, `min_safe_clearance 0.4`, `car_width 0.30`, `max_steering_angle_deg 24`.
-
-Result with these values: about **75-80 s** per lap on Spielberg.

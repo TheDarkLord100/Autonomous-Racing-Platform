@@ -17,6 +17,7 @@ import numpy as np
 
 
 def load(path):
+    """Load a lap-logger CSV as a dict of column arrays."""
     d = np.genfromtxt(path, delimiter=',', names=True)
     return {k: d[k] for k in d.dtype.names}
 
@@ -36,6 +37,7 @@ def segments(d, lap, s_range):
 
 
 def main():
+    """Parse arguments and plot the given logs against arc length."""
     ap = argparse.ArgumentParser()
     ap.add_argument('logs', nargs='+')
     ap.add_argument('--lap', type=int, default=None, help='only this lap (0 = out-lap)')

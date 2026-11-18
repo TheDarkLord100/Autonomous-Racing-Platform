@@ -1,3 +1,5 @@
+"""Launch the odom_noise node."""
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -8,6 +10,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    """Declare the launch arguments and start odom_noise with its parameter file."""
     default_params = os.path.join(
         get_package_share_directory('odom_noise'), 'config', 'odom_noise_params.yaml')
     return LaunchDescription([

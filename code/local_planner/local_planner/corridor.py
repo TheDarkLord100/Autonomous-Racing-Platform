@@ -24,6 +24,7 @@ class Raceline:
     """Arrays built from race_msgs/WaypointArray."""
 
     def __init__(self, s, x, y, psi, kappa, vx, w_left, w_right):
+        """Store the raceline columns as arrays, with s shifted to start at 0."""
         self.s = np.asarray(s, float) - float(s[0])
         self.xy = np.column_stack((x, y)).astype(float)
         self.psi = np.asarray(psi, float)
@@ -37,9 +38,11 @@ class Raceline:
 
     @classmethod
     def from_msg(cls, msg):
+        """Build a Raceline from a race_msgs/WaypointArray."""
         w = msg.waypoints
 
         def col(field):
+            """Return one waypoint field as a list."""
             return [getattr(p, field) for p in w]
         return cls(col('s_m'), col('x_m'), col('y_m'), col('psi_rad'),
                    col('kappa_radpm'), col('vx_mps'), col('w_left_m'), col('w_right_m'))
@@ -103,10 +106,12 @@ class Obstacles:
     the gate and both planners so they all see exactly the same world."""
 
     def __init__(self, pts_car):
+        """Store the scan points (car frame) and build a KD-tree on them."""
         self.pts = np.asarray(pts_car, float).reshape(-1, 2)
         self.tree = cKDTree(self.pts) if len(self.pts) else None
 
     def clearance(self, pts):
+        """Return the distance from each point to the nearest scan point (inf if none)."""
         pts = np.asarray(pts, float).reshape(-1, 2)
         if self.tree is None:
             return np.full(len(pts), np.inf)
@@ -126,7 +131,10 @@ def required_clearance(pts, threshold, near_threshold, near_radius):
 # Reference path: the raceline segment ahead, expressed in base_link
 # --------------------------------------------------------------------------
 class RefPath:
+    """Raceline segment ahead of the car, expressed in the car frame (base_link)."""
+
     def __init__(self, raceline: Raceline, seg_idx, seg_rel_s, pose):
+        """Transform the selected raceline points and headings into the car frame."""
         self.idx = np.asarray(seg_idx)
         self.s = np.asarray(seg_rel_s, float)
         self.xy = map_to_car(raceline.xy[self.idx], pose)
@@ -140,6 +148,7 @@ class RefPath:
 
     @property
     def length(self):
+        """Return the arc length of the segment."""
         return float(self.s[-1])
 
     def at(self, s):
@@ -164,6 +173,7 @@ class RefPath:
         return float(d0), float(dd0)
 
     def v_at(self, s):
+        """Return the raceline speed interpolated at arc length ``s``."""
         return np.interp(s, self.s, self.vx)
 
 
@@ -199,6 +209,8 @@ def lateral_bounds(ref: RefPath, obstacles: Obstacles, stations, band=0.2,
 # --------------------------------------------------------------------------
 @dataclass
 class CorridorResult:
+    """Result of the scan-clearance gate on the raceline segment."""
+
     free: bool                 # True -> raceline ahead is clear
     first_blocked_s: float     # arc length (from car) of first violation, nan if free
     clearance: np.ndarray      # (K,) distance from each raceline point to nearest scan point

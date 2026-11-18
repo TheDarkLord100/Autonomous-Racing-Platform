@@ -14,13 +14,16 @@ from .geometry import interpolate
 
 
 class OdomBuffer:
+    """Time-ordered buffer of odometry poses, used to look up the pose at a scan stamp."""
 
     def __init__(self, max_age=1.0):
+        """Create an empty buffer that keeps entries up to ``max_age`` seconds old."""
         self.max_age = max_age
         self._t = deque()
         self._p = deque()
 
     def __len__(self):
+        """Return the number of buffered entries."""
         return len(self._t)
 
     def add(self, t, pose):
@@ -34,6 +37,7 @@ class OdomBuffer:
             self._p.popleft()
 
     def latest(self):
+        """Return the newest (stamp, pose), or (None, None) if empty."""
         return (self._t[-1], self._p[-1]) if self._t else (None, None)
 
     def pose_at(self, t):

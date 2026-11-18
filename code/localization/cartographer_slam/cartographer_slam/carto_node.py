@@ -35,6 +35,7 @@ from tf2_ros import StaticTransformBroadcaster
 # ---------------------------------------------------------------- SE(2) ----
 
 def wrap_angle(a):
+    """Wrap an angle to [-pi, pi)."""
     return (a + math.pi) % (2.0 * math.pi) - math.pi
 
 
@@ -47,6 +48,7 @@ def compose(a, b):
 
 
 def inverse(a):
+    """Return the inverse of a 2D pose (x, y, yaw)."""
     c, s = math.cos(a[2]), math.sin(a[2])
     return (-c * a[0] - s * a[1],
             s * a[0] - c * a[1],
@@ -54,12 +56,14 @@ def inverse(a):
 
 
 def pose_to_xyyaw(p):
+    """Return (x, y, yaw) of a geometry_msgs/Pose."""
     q = p.orientation
     yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
     return (p.position.x, p.position.y, yaw)
 
 
 def xyyaw_to_pose(x, y, yaw):
+    """Return a geometry_msgs/Pose for (x, y, yaw)."""
     p = Pose()
     p.position.x, p.position.y = float(x), float(y)
     p.orientation.z = math.sin(yaw / 2.0)
@@ -70,8 +74,15 @@ def xyyaw_to_pose(x, y, yaw):
 # ----------------------------------------------------------------- node ----
 
 class CartoNode(Node):
+    """ROS 2 node around Cartographer: pose output, initial pose and map saving.
+
+    Converts Cartographer's tracked pose from ``carto_map`` to ``map`` and publishes it on
+    ``pose_topic`` and ``path_topic``; restarts the localization trajectory on an initial
+    pose; serves ``save_map`` in mapping mode.
+    """
 
     def __init__(self):
+        """Declare parameters; create publishers, subscribers, service clients and services."""
         super().__init__('carto_node')
 
         self.mode = self.declare_parameter('mode', 'localization').value
@@ -147,6 +158,7 @@ class CartoNode(Node):
     # ------------------------------------------------------------ outputs --
 
     def tracked_cb(self, msg):
+        """Publish the tracked pose in the map frame and append it to the path."""
         x, y, yaw = compose(self.origin, pose_to_xyyaw(msg.pose))
         out = PoseStamped()
         out.header.stamp = msg.header.stamp
@@ -163,10 +175,12 @@ class CartoNode(Node):
     # ------------------------------------------------------- localization --
 
     def init_from_param(self):
+        """Start localization from the ``initial_pose`` parameter (one-shot timer)."""
         self.init_timer.cancel()
         self.restart_trajectory(self.initial_pose)
 
     def initialpose_cb(self, msg):
+        """Restart localization at a received initial pose (localization mode only)."""
         if msg.header.frame_id and msg.header.frame_id != self.map_frame:
             self.get_logger().warn(
                 f'initial pose in frame {msg.header.frame_id}, expected {self.map_frame}; ignored')
@@ -179,6 +193,11 @@ class CartoNode(Node):
         self.restart_trajectory(pose)
 
     def restart_trajectory(self, pose_map):
+        """Finish the active trajectory and start a new one at ``pose_map``.
+
+        The map-frame pose is converted into a pose relative to the first node of the
+        frozen trajectory 0, as start_trajectory expects.
+        """
         with self.lock:
             if self.first_node is None:
                 res = self.call(self.query_cli, TrajectoryQuery.Request(trajectory_id=0))
@@ -215,6 +234,11 @@ class CartoNode(Node):
     # ------------------------------------------------------------ mapping --
 
     def save_map_cb(self, request, response):
+        """Finish the trajectory, write the .pbstream and the sidecar YAML.
+
+        Replies with ``success`` False and a message if ``map_dir`` or ``map_name`` is not set
+        or a Cartographer service call fails.
+        """
         with self.lock:
             if not self.map_name or not self.map_dir:
                 response.success = False
@@ -271,6 +295,7 @@ class CartoNode(Node):
         return future.result()
 
     def ok(self, res, what):
+        """Return True if a Cartographer service response has status OK; log it otherwise."""
         if res is None:
             return False
         if res.status.code != StatusCode.OK:
@@ -280,6 +305,7 @@ class CartoNode(Node):
 
 
 def main(args=None):
+    """Run the node on a multi-threaded executor until shutdown."""
     rclpy.init(args=args)
     node = CartoNode()
     executor = MultiThreadedExecutor()

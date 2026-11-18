@@ -33,15 +33,18 @@ from .odom_buffer import OdomBuffer
 
 
 def _stamp_to_sec(stamp):
+    """Return a builtin_interfaces/Time as float seconds."""
     return stamp.sec + 1e-9 * stamp.nanosec
 
 
 def _pose_from_msg(p):
+    """Return (x, y, yaw) of a geometry_msgs/Pose as an array."""
     o = p.orientation
     return np.array([p.position.x, p.position.y, quat_to_yaw(o.x, o.y, o.z, o.w)])
 
 
 def _fill_pose(msg_pose, pose):
+    """Write (x, y, yaw) into a geometry_msgs/Pose in place."""
     msg_pose.position.x = float(pose[0])
     msg_pose.position.y = float(pose[1])
     msg_pose.position.z = 0.0
@@ -53,8 +56,14 @@ def _fill_pose(msg_pose, pose):
 
 
 class ParticleFilterNode(Node):
+    """ROS 2 node running the particle filter on the map, scan and odometry.
+
+    Publishes the estimate on ``pose_topic`` and ``odom_out_topic``, the particles on
+    ``particles_topic`` and, if enabled, the ``map -> odom`` transform.
+    """
 
     def __init__(self):
+        """Declare parameters, build the motion model, create publishers, subscribers and TF."""
         super().__init__('particle_filter')
 
         # ---------------- parameters
@@ -168,6 +177,7 @@ class ParticleFilterNode(Node):
 
     # ------------------------------------------------------------ callbacks
     def map_cb(self, msg):
+        """Build the occupancy map, sensor model and filter from a received map."""
         info = msg.info
         data = np.asarray(msg.data, dtype=np.int16).reshape(info.height, info.width)
         origin = _pose_from_msg(info.origin)
@@ -198,6 +208,7 @@ class ParticleFilterNode(Node):
             self.get_logger().info('waiting for an initial pose (RViz "2D Pose Estimate")')
 
     def initialpose_cb(self, msg):
+        """Initialize the filter at a received pose, or store it until the map arrives."""
         if msg.header.frame_id and msg.header.frame_id != self.map_frame:
             self.get_logger().warn(
                 f'initial pose is in "{msg.header.frame_id}", expected "{self.map_frame}"; using as-is')
@@ -209,6 +220,7 @@ class ParticleFilterNode(Node):
             self._initialize(pose)
 
     def _initialize(self, pose):
+        """Spread the particles around ``pose`` and anchor it to the newest odometry."""
         self.pf.initialize(pose, self.initial_std_xy, self.initial_std_theta,
                            is_free=self.map.is_free)
         # the pose is "now": anchor it to the newest odom (set at the first scan if none yet)
@@ -219,6 +231,11 @@ class ParticleFilterNode(Node):
             f'initialized at x={pose[0]:.2f}, y={pose[1]:.2f}, yaw={pose[2]:.2f}')
 
     def odom_cb(self, msg):
+        """Buffer odometry, release a waiting scan, and publish the extrapolated estimate.
+
+        With ``publish_on_odom`` the estimate at the last scan is moved forward by the
+        odometry since that scan and published on every odometry message.
+        """
         pose = _pose_from_msg(msg.pose.pose)
         t = _stamp_to_sec(msg.header.stamp)
         self.odom_buffer.add(t, pose)
@@ -242,6 +259,7 @@ class ParticleFilterNode(Node):
             self.odom_pub.publish(out)
 
     def scan_cb(self, msg):
+        """Process a scan now, or hold it until odometry covers its stamp."""
         if self.pf is None or not self.pf.initialized:
             return
         if not self.laser_offset_ready:
@@ -263,6 +281,7 @@ class ParticleFilterNode(Node):
         self._process_scan(msg)
 
     def _process_scan(self, msg):
+        """Run predict and update for one scan, then publish the estimate and stats."""
         layout = (len(msg.ranges), msg.angle_min, msg.angle_increment)
         if layout != self.scan_layout:
             self.sensor_model.set_scan_geometry(msg.angle_min, msg.angle_increment, len(msg.ranges))
@@ -298,10 +317,12 @@ class ParticleFilterNode(Node):
     # --------------------------------------------------------------- helpers
     @staticmethod
     def _empty_stats():
+        """Return a fresh statistics dictionary."""
         return {'times': [], 'neff': [], 'resampled': 0, 'injected': 0,
                 'inject_events': 0, 'deferred': 0, 'late': 0, 'old': 0}
 
     def _log_stats(self, dt):
+        """Accumulate per-update statistics and log a summary every 100 updates."""
         s = self.stats
         s['times'].append(dt)
         s['neff'].append(self.pf.last_neff / self.pf.n)
@@ -324,6 +345,7 @@ class ParticleFilterNode(Node):
             self.stats = self._empty_stats()
 
     def _lookup_laser_offset(self, laser_frame):
+        """Look up the laser pose in the base frame from TF and pass it to the sensor model."""
         try:
             tf = self.tf_buffer.lookup_transform(self.base_frame, laser_frame, Time())
             t, q = tf.transform.translation, tf.transform.rotation
@@ -343,6 +365,7 @@ class ParticleFilterNode(Node):
                     f'using laser_offset_fallback {self.laser_offset_fallback}')
 
     def _covariance6(self):
+        """Return the (x, y, yaw) covariance as a row-major 6x6 list."""
         c = self.pf.covariance
         cov = [0.0] * 36
         for i, a in enumerate((0, 1, 5)):      # x, y, yaw in the 6x6 layout
@@ -351,6 +374,7 @@ class ParticleFilterNode(Node):
         return cov
 
     def _publish_pose(self, stamp):
+        """Publish the estimate as a PoseStamped."""
         msg = PoseStamped()
         msg.header.stamp = stamp
         msg.header.frame_id = self.map_frame
@@ -358,6 +382,7 @@ class ParticleFilterNode(Node):
         self.pose_pub.publish(msg)
 
     def _publish_particles(self, stamp):
+        """Publish (a subsample of) the particles as a PoseArray."""
         parts = self.pf.particles
         if parts.shape[0] > self.max_viz_particles:
             parts = parts[self.rng.choice(parts.shape[0], self.max_viz_particles, replace=False)]
@@ -371,6 +396,7 @@ class ParticleFilterNode(Node):
         self.particles_pub.publish(msg)
 
     def _publish_map_to_odom(self, stamp):
+        """Publish the map -> odom transform from the estimate and the odometry at the scan."""
         if self.filter_odom_pose is None:
             return
         # T_map_odom = T_map_base (+) inverse(T_odom_base), both at the scan stamp
@@ -390,6 +416,7 @@ class ParticleFilterNode(Node):
 
 
 def main(args=None):
+    """Run the particle filter node until shutdown."""
     rclpy.init(args=args)
     node = ParticleFilterNode()
     try:

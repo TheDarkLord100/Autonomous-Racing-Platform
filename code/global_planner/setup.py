@@ -1,3 +1,5 @@
+"""Setuptools configuration for the global_planner ROS 2 package."""
+
 from setuptools import find_packages, setup
 
 package_name = 'global_planner'

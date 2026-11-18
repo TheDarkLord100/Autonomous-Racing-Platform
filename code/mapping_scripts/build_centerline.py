@@ -84,6 +84,7 @@ def ray_widths(xy, nl, track, meta, H, max_r):
     r = np.arange(step, max_r, step)
 
     def side(sign):
+        """Return the distance to the track edge along the normal on one side, and a hit mask."""
         px = xy[:, 0, None] + sign * nl[:, 0, None] * r          # (N, R)
         py = xy[:, 1, None] + sign * nl[:, 1, None] * r
         rows, cols = world_to_px(px, py, meta, H)
@@ -101,6 +102,7 @@ def ray_widths(xy, nl, track, meta, H, max_r):
 
 
 def plot_part2(track, meta, H, xy, nl, wl, wr, kappa, s, title, out_path):
+    """Plot the centreline, its walls, the widths and the curvature, and save the figure."""
     res = meta['resolution']
     ox, oy, oyaw = meta['origin']
     W = track.shape[1]
@@ -146,6 +148,7 @@ def plot_part2(track, meta, H, xy, nl, wl, wr, kappa, s, title, out_path):
 
 
 def main():
+    """Parse arguments, build the centreline from the part-1 skeleton and write the CSV."""
     ap = argparse.ArgumentParser()
     ap.add_argument('--track', default='Spielberg')
     ap.add_argument('--map', default='GT', help='map folder under data/<track>/, e.g. GT, carto')

@@ -27,7 +27,7 @@ scan_matching/
 
 Design rule: `core.py` and `tracker.py` are plain NumPy with **no ROS imports**. The algorithm can be run, tested and debugged offline (e.g. on recorded bags); the node only converts messages and calls into it.
 
-Optional dependency: `numba` (compiles the two inner loops, ~5x faster per match). Without it the same code runs as plain Python with identical results.
+Optional dependency: `numba` (compiles the two inner loops). Without it the same code runs as plain Python with identical results.
 
 ---
 
@@ -160,7 +160,7 @@ On the first scan the node looks up `base_link → laser` in TF and creates the 
 | out | `/scan_match/path` | Path, last `path_max_length` poses | `map` |
 | out | TF (optional) | `publish_tf: true` | `map` → `scan_match/base_link` |
 
-TF is off by default, so the node can run alongside other localizers and the simulator without conflicting transforms. The output is in `map`, directly comparable with the simulator's ground truth `/ego_racecar/odom`.
+TF is off by default (`publish_tf`). The output is in `map`, the frame of the simulator's ground truth `/ego_racecar/odom`.
 
 ### Initial pose
 
@@ -238,7 +238,8 @@ Chosen on recorded Spielberg runs against ground truth: `odom_prior_weight` 0.25
 ## Build and run
 
 ```bash
-f1sim                                            # venv + ROS + workspace
+source /opt/ros/jazzy/setup.bash && source ~/f1tenth_sim_ws/.venv/bin/activate
+cd ~/f1tenth_sim_ws && source install/setup.bash
 pip install numba --dry-run                      # check it does not change numpy, then:
 pip install numba
 cd ~/f1tenth_sim_ws && python3 -m colcon build --packages-select scan_matching
@@ -250,7 +251,4 @@ ros2 launch scan_matching scan_matching_launch.py   # args: params_file, use_sim
 
 Start-up log: `correspondence search: numba, ready in … s` (or `plain Python` if numba is not installed), then `laser in base: x=0.275 y=0.000 yaw=0.000`.
 
-### Performance
-
-- Laptop, 819-beam scans at 10 Hz: 8–18 ms per match with numba (100 ms available), ~4–6 ICP iterations; ~5x slower without numba.
-- Numba compile at start-up: ~2–3 s the first time, < 1 s afterwards (cached).
+In full-stack runs `simulation_bringup` starts it with `localization:=scan_matching` (initial pose = the simulator spawn) and a relay that turns `/scan_match/odom` into 100 Hz odometry for the planner.

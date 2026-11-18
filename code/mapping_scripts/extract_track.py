@@ -26,6 +26,7 @@ SIM_START = [0.0, 0.0, -2.879]
 
 # ---------------------------------------------------------------- Part 1 ----
 def start_pixel(free, meta, H, start):
+    """Return the pixel of the start pose, snapped to the nearest free pixel if needed."""
     r, c = world_to_px(np.array([start[0]]), np.array([start[1]]), meta, H)
     rc = (int(round(r[0])), int(round(c[0])))
     if not free[rc]:
@@ -36,6 +37,10 @@ def start_pixel(free, meta, H, start):
 
 
 def build_track_mask(free, start_rc, res, open_radius_px, min_hole_m2):
+    """Return the track mask: the free component containing the start, small holes filled.
+
+    Raises RuntimeError if the opening removes the start pixel.
+    """
     track = free.copy()                                   # unknown + occupied -> not track
 
     if open_radius_px > 0:                                # cut thin leaks through wall gaps
@@ -74,6 +79,7 @@ def prune_spurs(skel, max_iter=100000):
 
 
 def part1(free, occ, meta, H, start, open_radius_px, min_hole_m2):
+    """Build the track mask, skeletonise it and prune spurs; return the intermediate results."""
     res = meta['resolution']
     n = free.size
     print(f'[P1] pixels: free {free.sum()/n*100:.1f}%, occupied {occ.sum()/n*100:.1f}%, '
@@ -98,6 +104,7 @@ def part1(free, occ, meta, H, start, open_radius_px, min_hole_m2):
 
 
 def plot_part1(free, occ, track, skel_raw, skel, start_rc, title, out_path):
+    """Plot the four part-1 stages and save the figure."""
     cls = np.full(free.shape, 0.5)                        # unknown = grey
     cls[free] = 1.0
     cls[occ] = 0.0
@@ -126,6 +133,7 @@ def plot_part1(free, occ, track, skel_raw, skel, start_rc, title, out_path):
 
 # ------------------------------------------------------------------ main ----
 def main():
+    """Parse arguments, run part 1 on the map and save the results to ``_part1.npz``."""
     ap = argparse.ArgumentParser()
     ap.add_argument('--track', default='Spielberg')
     ap.add_argument('--map', default='GT', help='map folder under data/<track>/, e.g. GT, carto')

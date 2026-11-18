@@ -29,6 +29,7 @@ def out_dirs(track, name):
 
 
 def load_map(yaml_path):
+    """Load a ROS map YAML and image; return (image, occupied mask, free mask, metadata)."""
     with open(yaml_path) as f:
         meta = yaml.safe_load(f)
     # os.path.join returns meta['image'] unchanged if it's already absolute

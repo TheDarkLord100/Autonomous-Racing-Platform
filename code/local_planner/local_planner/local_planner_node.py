@@ -43,10 +43,12 @@ from local_planner.rrt import RRTStarPlanner
 
 
 def yaw_from_quat(q):
+    """Return the yaw angle of a quaternion."""
     return math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
 
 def apply_tf(tf, x, y, yaw):
+    """Apply a TransformStamped to a 2D pose (x, y, yaw)."""
     t, th = tf.transform.translation, yaw_from_quat(tf.transform.rotation)
     c, s = math.cos(th), math.sin(th)
     return t.x + c * x - s * y, t.y + s * x + c * y, yaw + th
@@ -87,7 +89,15 @@ RRT = {
 
 
 class LocalPlanner(Node):
+    """ROS 2 node: gate the raceline ahead against the scan and publish the local path.
+
+    Subscribes to the global raceline, the pose and the scan; publishes
+    ``/local_waypoints``, ``/local_planner/mode``, ``/local_planner/compute_ms`` and
+    ``/local_planner/markers``.
+    """
+
     def __init__(self):
+        """Declare parameters, create the planners, publishers, subscribers and TF listener."""
         super().__init__('local_planner')
         self.p = self.declare_group('', COMMON)
         fr = self.declare_group('frenet.', FRENET)
@@ -131,6 +141,7 @@ class LocalPlanner(Node):
             f'{self.p["waypoints_topic"]} ...')
 
     def declare_group(self, prefix, defaults):
+        """Declare the parameters in ``defaults`` under ``prefix`` and return their values."""
         out = {}
         for k, v in defaults.items():
             self.declare_parameter(prefix + k, v)
@@ -139,6 +150,7 @@ class LocalPlanner(Node):
 
     # ------------------------------------------------------------------ inputs
     def on_raceline(self, msg):
+        """Store the received global raceline and its frame."""
         if len(msg.waypoints) < 2:
             self.get_logger().error('raceline has fewer than 2 waypoints')
             return
@@ -150,6 +162,7 @@ class LocalPlanner(Node):
                                f'{self.raceline.length:.2f} m')
 
     def on_pose(self, msg):
+        """Store the latest pose, transformed into the raceline frame if needed."""
         pp = msg.pose.pose
         x, y, yaw = pp.position.x, pp.position.y, yaw_from_quat(pp.orientation)
         if msg.header.frame_id and msg.header.frame_id != self.frame:
@@ -163,6 +176,7 @@ class LocalPlanner(Node):
         self.pose = (x, y, yaw)
 
     def laser_offset(self, laser_frame):
+        """Look up the laser pose in the base frame; return False if TF is not ready."""
         try:
             tf = self.tf_buffer.lookup_transform(self.p['base_frame'], laser_frame, Time())
         except TransformException as e:
@@ -177,6 +191,11 @@ class LocalPlanner(Node):
 
     # -------------------------------------------------------------------- cycle
     def on_scan(self, scan):
+        """Run one planning cycle on a new scan.
+
+        Builds the raceline segment ahead, runs the clearance gate, selects pass-through,
+        the planner or the fallback, and publishes the path, mode, timing and markers.
+        """
         if self.raceline is None or self.pose is None:
             return
         if self.laser_in_base is None and not self.laser_offset(scan.header.frame_id):
@@ -221,6 +240,11 @@ class LocalPlanner(Node):
         self.publish_markers(ref, gate, path_car, debug, mode, Time().to_msg())
 
     def run_planner(self, planner, ref, obs):
+        """Run the configured planner and return (path, debug, mode).
+
+        When the planner finds no feasible path, returns the Frenet best-effort candidate
+        (if any) or the raceline segment, with mode ``fallback``.
+        """
         if planner == 'frenet':
             res = self.frenet.plan(ref, obs, self.threshold, self.kappa_max)
             if res.path is not None:
@@ -243,6 +267,7 @@ class LocalPlanner(Node):
 
     # ------------------------------------------------------------------ outputs
     def publish_path(self, path_car, s, v, pose, ref, stamp):
+        """Transform a car-frame path to the raceline frame and publish it as waypoints."""
         pts = car_to_map(path_car, pose)
         psi, kap = heading_curvature(pts)
         # widths: raceline widths shifted by the lateral offset (approximate, for logging only)
@@ -260,6 +285,7 @@ class LocalPlanner(Node):
         self.path_pub.publish(msg)
 
     def log_timing(self, ms, mode, gate):
+        """Record the cycle time, log blocked gates, and log timing stats every 100 cycles."""
         self.times.append(ms)
         if not gate.free:
             self.get_logger().info(f'[{mode}] blocked at s={gate.first_blocked_s:.2f} m '
@@ -272,11 +298,13 @@ class LocalPlanner(Node):
             self.times = []
 
     def publish_markers(self, ref, gate, path_car, debug, mode, stamp):
+        """Publish the corridor, local path and candidate/tree markers in base_link."""
         ma = MarkerArray()
         base = self.p['base_frame']
 
         def strip(ns, mid, pts, colors=None, rgba=(0.0, 0.4, 1.0, 1.0), w=0.05,
                   mtype=Marker.LINE_STRIP):
+            """Return a marker of type mtype through the given points."""
             m = Marker()
             m.header.frame_id, m.header.stamp = base, stamp
             m.ns, m.id, m.type, m.action = ns, mid, mtype, Marker.ADD
@@ -319,6 +347,7 @@ class LocalPlanner(Node):
 
 
 def main(args=None):
+    """Run the local planner node until shutdown."""
     rclpy.init(args=args)
     node = LocalPlanner()
     try:

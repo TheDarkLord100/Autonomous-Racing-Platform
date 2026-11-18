@@ -42,6 +42,7 @@ def arc(xy):
 
 
 def tangents(xy):
+    """Return unit tangents of a closed polyline (central differences)."""
     t = np.roll(xy, -1, axis=0) - np.roll(xy, 1, axis=0)
     return t / np.linalg.norm(t, axis=1, keepdims=True)
 
@@ -59,12 +60,19 @@ def densify(line, ds=0.01):
 
 
 def stats(e):
+    """Return mean, RMS and maximum absolute value of an error array."""
     return {'mean': float(np.mean(e)), 'rms': float(np.sqrt(np.mean(e ** 2))),
             'max_abs': float(np.max(np.abs(e)))}
 
 
 # ---------------------------------------------------------------- compare ----
 def compare(test, ref_line, name):
+    """Compare a track against a reference centreline.
+
+    Returns (metrics, arrays): statistics and per-point arrays of the cross-track,
+    left-wall, right-wall and total-width differences, plus both lap lengths. The
+    reference is reversed if it runs the other way.
+    """
     ref = densify(ref_line)
     _, i = cKDTree(ref['xy']).query(test['xy'])
     if np.mean(np.sum(tangents(test['xy']) * ref['t'][i], axis=1)) < 0:
@@ -87,6 +95,7 @@ def compare(test, ref_line, name):
 
 
 def report(name, m):
+    """Print the comparison statistics for one pair."""
     cm = lambda d: f'mean {d["mean"]*100:+6.1f}, RMS {d["rms"]*100:5.1f}, max {d["max_abs"]*100:5.1f} cm'
     print(f'[{name}]')
     print(f'   cross-track  {cm(m["cross_track"])}')
@@ -98,12 +107,14 @@ def report(name, m):
 
 
 def boundaries(line):
+    """Return the left and right wall polylines of a centreline with widths."""
     nl = tangents(line['xy'])[:, ::-1] * [-1, 1]                       # left normal
     return line['xy'] + line['wl'][:, None] * nl, line['xy'] - line['wr'][:, None] * nl
 
 
 # ------------------------------------------------------------------- main ----
 def main():
+    """Parse arguments, run both comparisons, write metrics.json and plot the errors."""
     ap = argparse.ArgumentParser()
     ap.add_argument('--track', default='Spielberg')
     ap.add_argument('--gt-dir', default='GT')

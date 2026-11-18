@@ -11,7 +11,10 @@ import math
 
 
 class WallSpeedPlannerConfig:
+    """Speed limits and front-distance thresholds for WallSpeedPlanner."""
+
     def __init__(self):
+        """Set the default speeds and distances."""
         self.cruise_velocity = 1.0
         self.min_velocity = 0.8
         self.front_cone_deg = 20.0
@@ -20,13 +23,20 @@ class WallSpeedPlannerConfig:
 
 
 class WallSpeedPlanner:
+    """Compute the speed from the free distance in a cone ahead of the car."""
 
     def __init__(self, config: WallSpeedPlannerConfig, scan_processor):
+        """Store the configuration and scan processor; convert the cone to radians."""
         self.config = config
         self.scan_processor = scan_processor
         self.front_cone = math.radians(config.front_cone_deg)
 
     def compute_velocity(self, range_data, angle_min, angle_increment, num_ranges):
+        """Return the speed for the minimum range in the front cone.
+
+        Cruise speed above ``slow_front_distance``, minimum speed below
+        ``min_front_distance``, linear in between.
+        """
         front_min = min(
             self.scan_processor.get_range(
                 range_data, a, angle_min, angle_increment, num_ranges)

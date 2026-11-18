@@ -12,8 +12,10 @@ import numpy as np
 
 
 class TargetSelectorConfig:
+    """Settings for target selection, wall centring and side safety."""
 
     def __init__(self):
+        """Set the default target-selection settings."""
         self.center_gain = 0.35                # (rad per meter of left/right wall imbalance)
         self.center_blend_angle_deg = 15.0     # FTG angle (deg) where centering fades to zero
         self.side_probe_window_deg = 8.0       # (deg) window around +-90 deg for wall distance
@@ -25,8 +27,10 @@ class TargetSelectorConfig:
 
 
 class TargetSelector:
+    """Choose the steering target in the gap, add wall centring and apply the side-safety check."""
 
     def __init__(self, config: TargetSelectorConfig):
+        """Store the configuration."""
         self.config = config
 
     def best_point_in_gap(self, ranges, gap_start, gap_end):
@@ -67,9 +71,11 @@ class TargetSelector:
         return max(-max_rad, min(max_rad, final_angle))
 
     def side_probe_window_rad(self):
+        """Return the side-probe window in radians."""
         return math.radians(self.config.side_probe_window_deg)
 
     def max_steering_rad(self):
+        """Return the steering limit in radians."""
         return math.radians(self.config.max_steering_angle_deg)
 
     def side_too_close(self, ranges, angles, turn_direction_sign):

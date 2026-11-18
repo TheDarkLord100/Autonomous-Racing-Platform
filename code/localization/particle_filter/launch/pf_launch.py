@@ -1,3 +1,5 @@
+"""Launch the particle filter, optionally with the odom_noise node."""
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -9,6 +11,7 @@ from launch_ros.actions import Node
 
 
 def _nodes(context):
+    """Build the PF node (and odom_noise if requested) from the resolved launch arguments."""
     params = LaunchConfiguration('params_file').perform(context)
     use_sim_time = LaunchConfiguration('use_sim_time').perform(context)
     odom_noise = LaunchConfiguration('odom_noise').perform(context) == 'true'
@@ -34,6 +37,7 @@ def _nodes(context):
 
 
 def generate_launch_description():
+    """Declare the launch arguments and defer node creation to ``_nodes``."""
     share = get_package_share_directory('particle_filter')
     return LaunchDescription([
         DeclareLaunchArgument('params_file',

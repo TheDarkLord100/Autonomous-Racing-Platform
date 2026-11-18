@@ -21,7 +21,10 @@ import math
 
 
 class WallErrorEstimatorConfig:
+    """Wall side, ray angle, desired distance and look-ahead for WallErrorEstimator."""
+
     def __init__(self):
+        """Set the default wall-following settings."""
         self.wall_side = 'left'
         self.theta_deg = 50.0
         self.desired_distance = 1.0
@@ -30,13 +33,16 @@ class WallErrorEstimatorConfig:
 
 
 class WallErrorEstimator:
+    """Estimate the wall distance error from two rays to the followed wall."""
 
     def __init__(self, config: WallErrorEstimatorConfig, scan_processor):
+        """Store the configuration and scan processor and derive the ray angles."""
         self.config = config
         self.scan_processor = scan_processor
         self._configure()
 
     def _configure(self):
+        """Validate the wall side and set the ray angles and steering sign."""
         wall_side = self.config.wall_side.lower()
         if wall_side not in ('left', 'right'):
             wall_side = 'left'  # node-level caller logs the warning; see pid_node.py

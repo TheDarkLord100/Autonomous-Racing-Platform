@@ -24,6 +24,7 @@ except ImportError:
     HAVE_NUMBA = False
 
     def njit(*args, **kwargs):              # no-op decorator
+        """Return the function unchanged (stand-in for numba.njit when numba is missing)."""
         if args and callable(args[0]):
             return args[0]
         return lambda f: f
@@ -32,6 +33,7 @@ except ImportError:
 # ---------------------------------------------------------------- SE(2) ----
 
 def wrap_angle(a):
+    """Wrap an angle to [-pi, pi)."""
     return (a + math.pi) % (2.0 * math.pi) - math.pi
 
 
@@ -44,6 +46,7 @@ def se2_compose(a, b):
 
 
 def se2_inverse(a):
+    """Return the inverse of an SE(2) pose [x, y, theta]."""
     c, s = math.cos(a[2]), math.sin(a[2])
     return np.array([-c * a[0] - s * a[1],
                      s * a[0] - c * a[1],
@@ -51,6 +54,7 @@ def se2_inverse(a):
 
 
 def transform_points(points, pose):
+    """Transform (N, 2) points by an SE(2) pose."""
     c, s = math.cos(pose[2]), math.sin(pose[2])
     R = np.array([[c, -s], [s, c]])
     return points @ R.T + pose[:2]
@@ -71,6 +75,7 @@ class Scan:
     def __init__(self, ranges, angle_min, angle_increment,
                  range_min=0.0, range_max=float('inf'),
                  normal_length=0.4, normal_max_gap=0.2):
+        """Convert ranges to points, mark valid beams, precompute normals and jump tables."""
         r = np.asarray(ranges, dtype=float)
         self.n = len(r)
         self.angle_min = float(angle_min)
@@ -94,6 +99,7 @@ class Scan:
         self._compute_normals(normal_length, normal_max_gap)
 
     def _build_jump_tables(self):
+        """Build the jump tables used by the correspondence search."""
         n = self.n
         if HAVE_NUMBA:
             ub = np.full(n, n, np.int64)
@@ -145,6 +151,7 @@ class Scan:
         ok = v & (cnt >= min_points)
 
         def wsum(a):
+            """Return windowed sums of ``a`` over [lo, hi) using a cumulative sum."""
             c = np.concatenate(([0.0], np.cumsum(a)))
             return c[hi] - c[lo]
         x, y = P[:, 0], P[:, 1]
@@ -164,6 +171,7 @@ class Scan:
         self.normal_ok = ok & flat
 
     def index_of_angle(self, phi):
+        """Return the beam index nearest to angle ``phi``, clipped to the scan."""
         i = int(round((phi - self.angle_min) / self.angle_increment))
         return min(max(i, 0), self.n - 1)
 
@@ -441,7 +449,10 @@ def solve_point_to_line(p, q, n, prior_t=None, prior_w=0.0):
 # ------------------------------------------------------------- ICP loop ----
 
 class IcpResult:
+    """Result of one PL-ICP match."""
+
     def __init__(self):
+        """Initialise an empty (invalid) result."""
         self.pose = None          # [x, y, theta] of current scan in ref frame
         self.valid = False
         self.iterations = 0

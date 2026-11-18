@@ -13,12 +13,15 @@ from .noise_model import OdometryNoise
 
 
 def _quat_to_yaw(q):
+    """Return the yaw angle of a quaternion."""
     return float(np.arctan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z)))
 
 
 class OdomNoiseNode(Node):
+    """ROS 2 node: republish odometry from ``input_topic`` with noise on ``output_topic``."""
 
     def __init__(self):
+        """Declare parameters, create the noise model, publisher and subscriber."""
         super().__init__('odom_noise')
         p = self.declare_parameter
         self.input_topic = p('input_topic', '/ego_racecar/odom').value
@@ -44,6 +47,7 @@ class OdomNoiseNode(Node):
             f'(seed {"random" if seed < 0 else seed})')
 
     def cb(self, msg):
+        """Apply the noise model to one odometry message and publish the result."""
         pp = msg.pose.pose
         true_pose = (pp.position.x, pp.position.y, _quat_to_yaw(pp.orientation))
         pose, teleported = self.noise.step(true_pose)
@@ -68,6 +72,7 @@ class OdomNoiseNode(Node):
 
 
 def main(args=None):
+    """Run the odom_noise node until shutdown."""
     rclpy.init(args=args)
     node = OdomNoiseNode()
     try:

@@ -16,8 +16,10 @@ from visualization_msgs.msg import Marker
 
 
 class MarkerVisualizerConfig:
+    """Frame and sizes for the gap-follow RViz markers."""
 
     def __init__(self):
+        """Set the default frame and marker sizes."""
         self.base_frame_id = 'ego_racecar/base_link'
         self.marker_length_min = 0.3
         self.marker_length_max = 1.0
@@ -31,13 +33,16 @@ class MarkerVisualizerConfig:
 
 
 class MarkerVisualizer:
+    """Build RViz markers for the gap-follow controller."""
 
     LIFETIME = Duration(sec=0, nanosec=300_000_000)  # 0.3 s
 
     def __init__(self, config: MarkerVisualizerConfig):
+        """Store the configuration."""
         self.config = config
 
     def _base_marker(self, ns, marker_id, marker_type, stamp):
+        """Return a marker with the common header, namespace, id, type and lifetime."""
         m = Marker()
         m.header.frame_id = self.config.base_frame_id
         m.header.stamp = stamp

@@ -11,6 +11,7 @@ import math
 
 
 class ScanProcessor:
+    """Look up scan ranges by angle."""
 
     def get_range(self, range_data, angle, angle_min, angle_increment, num_ranges):
         """

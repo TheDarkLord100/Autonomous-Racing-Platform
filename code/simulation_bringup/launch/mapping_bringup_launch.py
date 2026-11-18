@@ -25,6 +25,11 @@ from simulation_bringup.launch_helpers import (PKG, after_log, bag, carto_node,
 
 
 def _setup(context):
+    """Resolve the mapping config and return the launch actions.
+
+    Starts the simulator, the ``map -> carto_map`` static TF, Cartographer in mapping mode
+    (with odom_noise if set) and, once ``carto_node`` is up, the reactive driver.
+    """
     share = Path(get_package_share_directory(PKG))
     arg = LaunchConfiguration('config').perform(context)
     config_path = Path(arg) if os.path.isabs(arg) else share / 'config' / arg
@@ -68,6 +73,7 @@ def _setup(context):
 
 
 def generate_launch_description():
+    """Declare the mapping overrides and defer the actions to ``_setup``."""
     return LaunchDescription([
         DeclareLaunchArgument('config', default_value='mapping.yaml',
                               description='mapping file in config/, or an absolute path'),

@@ -1,3 +1,5 @@
+"""Setuptools configuration for the scan_matching ROS 2 package."""
+
 from setuptools import find_packages, setup
 import os
 from glob import glob

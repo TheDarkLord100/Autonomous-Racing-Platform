@@ -1,22 +1,28 @@
-diff -ru -x '*.pyc' -x __pycache__ f1tenth_gym_ros/config/sim.yaml f1tenth_gym_ros_patched/config/sim.yaml
---- f1tenth_gym_ros/config/sim.yaml	2026-10-23 21:47:20.000000000 +0530
-+++ f1tenth_gym_ros_patched/config/sim.yaml	2026-11-18 14:57:55.281769214 +0530
-@@ -116,6 +116,8 @@
+diff --git a/config/sim.yaml b/config/sim.yaml
+index 3ea76ee..afcb117 100644
+--- a/config/sim.yaml
++++ b/config/sim.yaml
+@@ -115,6 +115,10 @@ bridge:
+     # If false, only steps sim on new /drive messages.
      # If true, the simulation will step using a timer callback.
      async_mode: True
-     odom_rate_hz: 100.0
++    odom_rate_hz: 100.0
 +    # false: no ground-truth map -> base_link TF (localization publishes the TF tree)
 +    publish_pose_tf: true
-     scan_rate_hz: 10.0
++    scan_rate_hz: 10.0
  
  foxglove:
-diff -ru -x '*.pyc' -x __pycache__ f1tenth_gym_ros/f1tenth_gym_ros/gym_bridge.py f1tenth_gym_ros_patched/f1tenth_gym_ros/gym_bridge.py
---- f1tenth_gym_ros/f1tenth_gym_ros/gym_bridge.py	2026-10-23 14:44:49.000000000 +0530
-+++ f1tenth_gym_ros_patched/f1tenth_gym_ros/gym_bridge.py	2026-11-18 14:57:55.281186227 +0530
-@@ -291,6 +291,10 @@
+   ros__parameters:
+diff --git a/f1tenth_gym_ros/gym_bridge.py b/f1tenth_gym_ros/gym_bridge.py
+index ca4e37b..0598106 100644
+--- a/f1tenth_gym_ros/gym_bridge.py
++++ b/f1tenth_gym_ros/gym_bridge.py
+@@ -289,6 +289,12 @@ class GymBridge(Node):
+         # Flag to know whether to publish the sim time or not
+         # Has to be different than use_sim_time so we can still use real time to trigger timer callbacks
          self.declare_parameter('use_sim_time_bridge', False)
-         self.declare_parameter('odom_rate_hz', 100.0)  # odom + TF + collision/lap topics
-         self.declare_parameter('scan_rate_hz', 40.0)   # LaserScan
++        self.declare_parameter('odom_rate_hz', 100.0)  # odom + TF + collision/lap topics
++        self.declare_parameter('scan_rate_hz', 40.0)   # LaserScan
 +        # False: skip the ground-truth map -> <ns>/base_link TF, so localization can own
 +        # base_link (map -> odom -> base_link, REP 105). Laser and wheel TFs still publish.
 +        self.declare_parameter('publish_pose_tf', True)
@@ -24,7 +30,88 @@ diff -ru -x '*.pyc' -x __pycache__ f1tenth_gym_ros/f1tenth_gym_ros/gym_bridge.py
  
          # check num_agents
          num_agents = self.get_parameter('num_agents').value
-@@ -850,6 +854,8 @@
+@@ -486,8 +492,10 @@ class GymBridge(Node):
+             # sim physical step timer
+             self.drive_timer = self.create_timer(0.01, self.drive_timer_callback)
+             # topic publishing timer
+-            self.timer = self.create_timer(0.004, self.timer_callback)
+-
++            self.odom_timer = self.create_timer(
++                1.0 / self.get_parameter('odom_rate_hz').value, self.odom_timer_callback)
++            self.scan_timer = self.create_timer(
++                1.0 / self.get_parameter('scan_rate_hz').value, self.scan_timer_callback)
+         # transform broadcaster
+         self.br = TransformBroadcaster(self)
+ 
+@@ -520,7 +528,8 @@ class GymBridge(Node):
+             if self.get_parameter('async_mode').value:
+                 # Set drive timer to 0 to trigger the callback asap
+                 self.drive_timer.timer_period_ns = 0
+-                self.timer.timer_period_ns = 0
++                self.odom_timer.timer_period_ns = 0
++                self.scan_timer.timer_period_ns = 0
+ 
+         # subscribers
+         self.ego_drive_sub = self.create_subscription(
+@@ -694,16 +703,25 @@ class GymBridge(Node):
+             clock_msg.clock.nanosec = int((sim_time % 1.0) * 1e9)
+             self.clock_pub.publish(clock_msg)
+ 
+-    def timer_callback(self):
+-        if self.sim_paused:
+-            return  # Skip stepping the sim if paused
+-
++    def _publish_stamp(self):
+         ts = self.get_clock().now().to_msg()
+         if self.get_parameter('use_sim_time_bridge').value:
+             # Ensure sim-time stamps the messages
+             sim_time = self.env.unwrapped.sim_time
+             ts.sec = int(sim_time // 1.0)
+             ts.nanosec = int((sim_time % 1.0) * 1e9)
++        return ts
++
++    def timer_callback(self):
++        """Publish everything at once (sync mode / fallback timer)."""
++        self.scan_timer_callback()
++        self.odom_timer_callback()
++
++    def scan_timer_callback(self):
++        if self.sim_paused:
++            return  # Skip publishing if paused
++
++        ts = self._publish_stamp()
+ 
+         # pub scans
+         self.ego_scan = [float(x) for x in self.ego_scan]
+@@ -712,6 +730,12 @@ class GymBridge(Node):
+             opp.scan = [float(x) for x in opp.scan]
+             opp.scan_pub.publish(self._make_scan_msg(ts, opp.namespace, opp.scan))
+ 
++    def odom_timer_callback(self):
++        if self.sim_paused:
++            return  # Skip publishing if paused
++
++        ts = self._publish_stamp()
++
+         # pub collision state (instantaneous; the sim clears it once the car
+         # is stopped or reset, so consumers that care about "ever collided"
+         # must latch it themselves)
+@@ -739,12 +763,13 @@ class GymBridge(Node):
+             opp.lap_count_pub.publish(Int32(data=laps))
+             opp.lap_time_pub.publish(Float32(data=float(lap_times[i])))
+ 
+-        # pub tf
++        # pub odom + tf
+         self._publish_odom(ts)
+         self._publish_transforms(ts)
+         self._publish_laser_transforms(ts)
+         self._publish_wheel_transforms(ts)
+ 
++
+     def _make_scan_msg(self, ts, namespace, ranges):
+         scan = LaserScan()
+         scan.header.stamp = ts
+@@ -829,6 +854,8 @@ class GymBridge(Node):
              opp.odom_in_ego_pub.publish(opp_odom)
  
      def _publish_transforms(self, ts):
@@ -33,29 +120,97 @@ diff -ru -x '*.pyc' -x __pycache__ f1tenth_gym_ros/f1tenth_gym_ros/gym_bridge.py
          for namespace, pose in [(self.ego_namespace, self.ego_pose)] + [
              (opp.namespace, opp.pose) for opp in self.opps
          ]:
-diff -ru -x '*.pyc' -x __pycache__ f1tenth_gym_ros/launch/gym_bridge_launch.py f1tenth_gym_ros_patched/launch/gym_bridge_launch.py
---- f1tenth_gym_ros/launch/gym_bridge_launch.py	2026-10-23 01:37:15.000000000 +0530
-+++ f1tenth_gym_ros_patched/launch/gym_bridge_launch.py	2026-11-18 14:09:03.285033737 +0530
-@@ -141,7 +141,7 @@
-         package='rviz2',
-         executable='rviz2',
-         name='rviz',
--        arguments=['-d', os.path.join(package_share, 'config', 'rviz', 'gym_bridge.rviz')],
-+        arguments=['-d', LaunchConfiguration('rviz_config')],
-         parameters=[{'use_sim_time': use_sim_time}],
-         condition=IfCondition(use_rviz),
+diff --git a/launch/gym_bridge_launch.py b/launch/gym_bridge_launch.py
+index 1152789..0fb265d 100644
+--- a/launch/gym_bridge_launch.py
++++ b/launch/gym_bridge_launch.py
+@@ -26,8 +26,8 @@ import yaml
+ 
+ from launch import LaunchDescription
+ from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, OpaqueFunction, SetLaunchConfiguration, Shutdown
+-from launch.conditions import IfCondition
+-from launch.substitutions import Command, EqualsSubstitution, LaunchConfiguration
++from launch.conditions import IfCondition, UnlessCondition
++from launch.substitutions import AndSubstitution, Command, EqualsSubstitution, LaunchConfiguration, NotSubstitution
+ from launch_ros.actions import Node
+ from launch_ros.parameter_descriptions import ParameterValue
+ from ament_index_python.packages import get_package_share_directory
+@@ -118,22 +118,37 @@ def _launch_setup(context, *args, **kwargs):
+     foxglove_ws_url_parts = ['ws://', foxglove_host, ':', foxglove_port]
+     foxglove_layout = LaunchConfiguration('foxglove_layout')
+ 
++    # use_rviz:=true switches the visualizer: RViz2 starts, and everything
++    # Foxglove (bridge, browser open, log lines) is skipped.
++    use_rviz = LaunchConfiguration('use_rviz')
++    use_foxglove = UnlessCondition(use_rviz)
++
+     foxglove_bridge_node = Node(
+         package='foxglove_bridge',
+         executable='foxglove_bridge',
+         name='foxglove_bridge',
+         parameters=[{'port': foxglove_port}],
+         output='screen',
++        condition=use_foxglove,
      )
-@@ -325,6 +325,13 @@
+     foxglove_open = ExecuteProcess(
+         cmd=['xdg-open', foxglove_open_url],
+-        condition=IfCondition(open_foxglove),
++        condition=IfCondition(AndSubstitution(open_foxglove, NotSubstitution(use_rviz))),
+         output='screen',
+     )
+-    foxglove_log = LogInfo(msg=['\033[34mFoxglove app: ', foxglove_app_url, '\033[0m'])
+-    foxglove_ws_log = LogInfo(msg=['\033[34mFoxglove WebSocket: '] + foxglove_ws_url_parts + ['\033[0m'])
+-    foxglove_target_log = LogInfo(msg=['\033[34mFoxglove target: ', foxglove_target, '\033[0m'])
+-    foxglove_layout_log = LogInfo(msg=['\033[34mFoxglove layout: ', foxglove_layout, '\033[0m'])
++    # RViz2 with the bundled config; off by default, enable with use_rviz:=true.
++    rviz_node = Node(
++        package='rviz2',
++        executable='rviz2',
++        name='rviz',
++        arguments=['-d', LaunchConfiguration('rviz_config')],
++        parameters=[{'use_sim_time': use_sim_time}],
++        condition=IfCondition(use_rviz),
++    )
++    foxglove_log = LogInfo(msg=['\033[34mFoxglove app: ', foxglove_app_url, '\033[0m'], condition=use_foxglove)
++    foxglove_ws_log = LogInfo(msg=['\033[34mFoxglove WebSocket: '] + foxglove_ws_url_parts + ['\033[0m'], condition=use_foxglove)
++    foxglove_target_log = LogInfo(msg=['\033[34mFoxglove target: ', foxglove_target, '\033[0m'], condition=use_foxglove)
++    foxglove_layout_log = LogInfo(msg=['\033[34mFoxglove layout: ', foxglove_layout, '\033[0m'], condition=use_foxglove)
+ 
+     # Create custom yaml file for map server by copying the original yaml file and scaling the resolution.
+     map_yaml_path = _resolve_map_yaml_path(map_path, package_share)
+@@ -246,6 +261,7 @@ def _launch_setup(context, *args, **kwargs):
+     return [
+         foxglove_bridge_node,
+         foxglove_open,
++        rviz_node,
+         bridge_node,
+         nav_lifecycle_node,
+         map_server_node,
+@@ -301,6 +317,20 @@ def generate_launch_description():
+                         'or a built-in gym track name like Spielberg. Empty takes it from the sim config.',
          )
      )
-     ld.add_action(
++    ld.add_action(
++        DeclareLaunchArgument(
++            'use_rviz',
++            default_value='false',
++            description='Use RViz2 (config/rviz/gym_bridge.rviz) instead of Foxglove.',
++        )
++    )
++    ld.add_action(
 +        DeclareLaunchArgument(
 +            'rviz_config',
 +            default_value=os.path.join(package_share, 'config', 'rviz', 'gym_bridge.rviz'),
 +            description='RViz config used with use_rviz:=true.',
 +        )
 +    )
-+    ld.add_action(
+     ld.add_action(
          DeclareLaunchArgument(
              'foxglove_host',
-             default_value='localhost',
+@@ -358,4 +388,4 @@ def generate_launch_description():
+     )
+     ld.add_action(OpaqueFunction(function=_launch_setup))
+ 
+-    return ld
++    return ld
+\ No newline at end of file

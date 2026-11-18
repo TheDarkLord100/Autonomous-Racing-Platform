@@ -24,25 +24,36 @@ from tf2_ros import TransformBroadcaster
 
 
 def yaw_of(q):
+    """Return the yaw angle of a quaternion."""
     return math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
 
 def compose(a, b):
+    """Return the composition a (+) b of two 2D poses."""
     c, s = math.cos(a[2]), math.sin(a[2])
     return (a[0] + c * b[0] - s * b[1], a[1] + s * b[0] + c * b[1], a[2] + b[2])
 
 
 def inverse(a):
+    """Return the inverse of a 2D pose."""
     c, s = math.cos(a[2]), math.sin(a[2])
     return (-c * a[0] - s * a[1], s * a[0] - c * a[1], -a[2])
 
 
 def stamp_sec(st):
+    """Return a builtin_interfaces/Time as float seconds."""
     return st.sec + st.nanosec * 1e-9
 
 
 class LocalizationRelay(Node):
+    """ROS 2 node: republish a per-scan pose estimate at the odometry rate.
+
+    The latest estimate is moved forward by the odometry since its stamp and published as
+    nav_msgs/Odometry on ``output_topic`` on every odometry message.
+    """
+
     def __init__(self):
+        """Declare parameters, create the odometry buffer, publishers and subscribers."""
         super().__init__('localization_relay')
         p = self.declare_parameter
         self.input_topic = p('input_topic', '/carto/pose').value
@@ -84,6 +95,7 @@ class LocalizationRelay(Node):
         return self.odom[-1][1]
 
     def on_estimate(self, msg):
+        """Anchor a new estimate to the odometry at its stamp."""
         pose = msg.pose if self.input_type == 'pose' else msg.pose.pose
         t = stamp_sec(msg.header.stamp)
         if self.anchor_t is not None and t <= self.anchor_t:
@@ -108,6 +120,7 @@ class LocalizationRelay(Node):
             self.br.sendTransform(tf)
 
     def on_odom(self, msg):
+        """Buffer odometry and publish the anchored estimate moved forward to this message."""
         pp = msg.pose.pose
         pose = (pp.position.x, pp.position.y, yaw_of(pp.orientation))
         self.odom.append((stamp_sec(msg.header.stamp), pose))
@@ -126,6 +139,7 @@ class LocalizationRelay(Node):
 
 
 def main(args=None):
+    """Run the localization relay node until shutdown."""
     rclpy.init(args=args)
     node = LocalizationRelay()
     try:

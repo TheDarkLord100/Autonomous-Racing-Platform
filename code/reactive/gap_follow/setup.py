@@ -1,3 +1,5 @@
+"""Setuptools configuration for the gap_follow ROS 2 package."""
+
 import os
 from glob import glob
 

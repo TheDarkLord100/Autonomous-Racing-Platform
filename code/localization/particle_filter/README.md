@@ -20,8 +20,7 @@ particle_filter/
 ├── launch/
 │   └── pf_launch.py                starts the filter (+ the odom_noise package's node with
 │                                   odom_noise:=true)
-├── test/                           offline tests (no ROS needed): sim_utils.py mini simulator,
-│                                   test_filter.py
+├── test/                           ament lint tests (copyright, flake8, pep257)
 └── particle_filter/                Python package
     ├── geometry.py                 SE(2) math
     ├── occupancy_map.py            map, distance field, free-space queries
@@ -90,7 +89,7 @@ Lets the filter use the odometry pose *at the scan's timestamp*, not whatever od
 ROS 2 wrapper. Reads parameters, converts messages, schedules the filter, publishes results. See *Data flow*.
 
 ### Odometry noise (separate package)
-Drifting wheel odometry for simulation comes from the shared `odom_noise` package (`code/odom_noise`), so every localization package is tested against the same, repeatable odometry error. `pf_launch.py odom_noise:=true` starts it and points the filter at `/ego_racecar/odom_noisy`. The offline tests also use its `noise_model.py`.
+Drifting wheel odometry for simulation comes from the shared `odom_noise` package (`code/odom_noise`). `pf_launch.py odom_noise:=true` starts it and points the filter at `/ego_racecar/odom_noisy`.
 
 ---
 
@@ -126,7 +125,7 @@ log wᵢ     = effective_beams · mean_k log p_k
 ```
 - Good pose → beam endpoints land on walls → d ≈ 0 → high p.
 - `z_rand` term: a beam that hits something not on the map can't zero a particle.
-- `effective_beams`: beams are correlated, so the raw product over K beams is far too confident. Instead the scan counts as `effective_beams` independent measurements, regardless of how many beams are valid. `num_beams` sets accuracy/cost; `effective_beams` alone sets confidence (higher = sharper weights, fewer surviving particles).
+- `effective_beams`: the scan counts as `effective_beams` independent measurements, regardless of how many beams are valid. `num_beams` sets accuracy/cost; `effective_beams` alone sets confidence (higher = sharper weights, fewer surviving particles).
 - Particles whose position is not in free space get log w = −10⁹.
 - All N × K endpoints are computed in one vectorised NumPy operation.
 
@@ -139,18 +138,14 @@ New weights = old weights × likelihood (in log space, max-subtracted, normalise
 **6. Recover** (see below). Replace a fraction of particles if the scan fit has dropped well below normal.
 
 ### Odometry scale calibration (`ScaleConfig`)
-Why: along a long, featureless straight the walls look the same at every position, so the LiDAR cannot correct the position *along* the track. A systematic odometry scale error (wheel radius, VESC speed gain, tyre slip) then makes the estimate creep ahead of or behind the car until the next corner snaps it back.
-
-How: each particle carries a factor kᵢ multiplying its odometry translation (rotation unscaled).
+Each particle carries a factor kᵢ multiplying its odometry translation (rotation unscaled).
 - Initialised as `odom_scale + N(0, init_std)` (`odom_scale` starts at 1 and is kept across re-initialisations).
 - Random walk `kᵢ += N(0, walk_std_per_m · trans)` each step so it can follow changing grip; clipped to [`min`, `max`].
-- At corners, particles with the wrong k end up off the walls and lose weight; resampling keeps the right k. The population converges to the true scale (offline on Spielberg: within ~30 s, to within ~0.005).
-- `odom_scale` (logged) = learned correction. Odometry reporting 5% too much distance → `odom_scale ≈ 1/1.05 = 0.952`. On the real car this is a direct readout of the VESC odometry calibration error.
+- Particles whose k does not fit lose weight in the sensor update; resampling keeps the ones that fit.
+- `odom_scale` (logged) = the learned correction factor (odometry reporting 5% too much distance → `odom_scale ≈ 1/1.05 = 0.952`).
 
 ### Recovery — augmented MCL (`RecoveryConfig`)
-Why: if the filter loses track (large slip, collision, wrong initial pose), all particles are in the wrong place and nothing brings them back.
-
-How: track the average scan fit with a slow and a fast running average and compare them.
+Tracks the average scan fit with a slow and a fast running average and compare them.
 ```
 l_avg   = log meanᵢ exp(mean_k log p_ik)            per-beam fit, averaged over particles
 w_slow ← w_slow + α_slow (w_avg − w_slow)            long-term "normal" fit (~100 s)
@@ -159,9 +154,9 @@ p_inject = 1 − w_fast / w_slow
 ```
 - If `p_inject ≥ min_inject_ratio`: replace `min(p_inject, max_inject_ratio)·N` random particles with fresh ones — Gaussian around the current estimate (`local_std_xy`, `local_std_theta`) and/or, with share `global_fraction`, uniformly over free space with random heading. Fresh particles get scales drawn around `odom_scale`.
 - Averages are kept in log space (no underflow).
-- Warm-up: until 1/α updates have been seen, α = 1/count (plain running mean), so the baseline isn't anchored to the first, unconverged scans.
-- Particles injected on the previous step are excluded from the next `l_avg` (they are mostly bad guesses; counting them would lower the fit and trigger more injection).
-- Threshold choice: on the Spielberg map normal driving reaches p ≈ 0.075; a real loss of track passes 0.12 within ~3 scans. Default 0.12.
+- Warm-up: until 1/α updates have been seen, α = 1/count (plain running mean).
+- Particles injected on the previous step are excluded from the next `l_avg`.
+- Default `min_inject_ratio`: 0.12.
 
 ---
 
@@ -183,7 +178,7 @@ p_inject = 1 − w_fast / w_slow
 
 **`scan_cb`** (every scan):
 1. First scans: read the LiDAR mounting offset from TF `base_frame → scan frame` (fallback `laser_offset_fallback` after 20 failed lookups).
-2. If the scan is stamped up to `scan_wait_sec` after the newest odom (normal when scan and odom are published by separate timers), hold it until the next odom message arrives (≤ one odom period, 10 ms). Otherwise process immediately.
+2. If the scan is stamped up to `scan_wait_sec` after the newest odom, hold it until the next odom message arrives (≤ one odom period, 10 ms). Otherwise process immediately.
 
 **`_process_scan`**: odom pose at scan stamp → `delta` → `predict` → `update` → publish `/pf/pose`, particles (every `publish_particles_every` scans), `map → odom` TF (if enabled), stats.
 
@@ -261,11 +256,6 @@ Plus a warning if scans fell outside the odom buffer.
 **Visualisation**
 - `publish_particles_every` 2, `max_viz_particles` 500
 
-### How the tuning was chosen
-- `effective_beams` / `sigma_hit`: offline sweep with noisy odometry at 5 m/s. Higher confidence lowers error but leaves fewer surviving particles: 5 → 0.18 m mean error / 43% of particles alive, 20 → 0.12 m / 26%, 40 → 0.10 m / 16%. 20 is the middle.
-- Reading the log: N_eff/N mean well below ~0.1 → lower `effective_beams`; estimate lagging in corners → raise it.
-- `min_inject_ratio`: see *Recovery*.
-
 ---
 
 ## Build and run
@@ -282,12 +272,10 @@ ros2 launch particle_filter pf_launch.py odom_noise:=true  # drifting odometry (
 
 Launch arguments: `params_file`, `use_sim_time` (false), `odom_noise` (false). Noise parameters are in the `odom_noise` package's own config.
 
-Offline tests (from the package root, with `code/odom_noise` next to it): `python3 -m pytest test/ -v`
+The algorithm modules have no ROS imports.
 
 Then initialise with RViz "2D Pose Estimate", or set `use_initial_pose_param: true` with `initial_pose` = the simulator's start pose (`sx`, `sy`, `stheta` in the gym's `sim.yaml`).
 
 RViz displays: PoseArray `/pf/particles`, Pose `/pf/pose`, Odometry `/pf/odom`.
 
-### Performance
-- ~11–12 ms per sensor update on the laptop (2000 particles, 60 beams), vs. 100 ms available at 10 Hz.
-- Map load ~0.45 s (Spielberg, 2000×2000).
+In full-stack runs `simulation_bringup` starts the filter with `localization:=pf`, sets the map topic, frame and initial pose from the scenario file, and feeds `/pf/odom` to the planner and controller.

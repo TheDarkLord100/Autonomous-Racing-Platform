@@ -12,16 +12,20 @@ import numpy as np
 
 
 class GapFinderConfig:
+    """Settings for GapFinder."""
 
     def __init__(self):
+        """Set the default gap-finding settings."""
         self.min_gap_points = 5         # ignore gaps smaller than this many beams
         self.gap_edge_margin = 0.10     # (m) extra clearance trimmed off each gap edge
         self.car_half_width = 0.20      # half the car's width, plus safety pad (m)
 
 
 class GapFinder:
+    """Find the largest gap in the processed scan and trim its edges for the car width."""
 
     def __init__(self, config: GapFinderConfig):
+        """Store the configuration."""
         self.config = config
 
     def find_max_gap(self, ranges, mask):
@@ -64,6 +68,7 @@ class GapFinder:
         clearance = self.config.car_half_width + self.config.gap_edge_margin
 
         def trim_for_dist(dist):
+            """Return the number of beams to trim at an edge at distance ``dist``."""
             if np.float32(dist) <= np.float32(0.05):
                 dist = 0.5  # fallback if that edge is also blanked
             half_angle = math.atan2(clearance, float(dist))

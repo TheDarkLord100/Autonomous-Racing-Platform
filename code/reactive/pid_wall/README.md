@@ -35,6 +35,8 @@ ros2 param dump /pid_node            # current values, to copy back into the YAM
 
 In RViz/Foxglove add `/pid_wall/debug_markers` and `/pid_wall/steering_marker`.
 
+For mapping runs, `simulation_bringup`'s `mapping_bringup_launch.py` starts this controller with `controller:=pid max_speed:=<m/s>` (its minimum speed is clamped to the maximum).
+
 ---
 
 ## Folder structure
@@ -99,7 +101,7 @@ front_min ≤ min_front_distance   → v = min_velocity           (wall/apex clo
 otherwise                        → linear interpolation between the two
 ```
 
-This brakes for corners regardless of the wall-following error. The speed is computed first because step 2 uses it for its look-ahead.
+The speed is computed first; step 2 uses it for its look-ahead.
 
 ### 2. Wall distance error: `WallErrorEstimator`
 
@@ -142,7 +144,7 @@ steering   = clamp(side_sign · raw, ±max_steering_angle)
 **Gain scheduling (`scale`).** At higher speed, the same steering angle moves the car sideways faster; the lateral response grows roughly with v². With fixed gains, the car is calm at low speed but oscillates at high speed. Multiplying all three gains by `(v_ref / v)²` keeps the loop's natural frequency and damping roughly constant across speeds:
 
 - `kp`, `ki` and `kd` apply exactly as written at `gain_ref_velocity`.
-- They get stronger in slow corners, for sharp turn-in, and softer on fast straights, to avoid weaving.
+- Gains are larger at low speed and smaller at high speed.
 - The clamps keep the scale within a sane range at very low and very high speeds.
 - `gain_ref_velocity: 0` turns scheduling off (`scale = 1`).
 
@@ -156,7 +158,7 @@ With the current values (`kp 0.32`, `kd 0.25`, reference 5 m/s, scale in [0.5, 3
 | 5.0 | 1.00 | 0.32 | 0.25 |
 | 6.0 | 0.69 | 0.22 | 0.17 |
 
-`ki` is 0 by design. The error is legitimately non-zero through a whole corner, so an integral would build up there and pull the car off line on the exit.
+`ki` is 0 (no integral term).
 
 ### 5. Rate limit: `SteeringShaper`
 
@@ -183,15 +185,3 @@ All are in `config/pid_node_params.yaml`, with a comment on each.
 | Steering limits | `max_steering_angle`, `max_steering_rate` | Physical limit (0.4189 rad = 24°) and smoothing |
 | Speed governor | `velocity`, `min_velocity`, `front_cone_deg`, `slow_front_distance`, `min_front_distance` | Cruise speed, corner floor, and where braking starts and ends |
 | Visualization | `base_frame_id` | Frame the markers are drawn in |
-
-### Why the current values
-
-Tuned in `f1tenth_gym` (Jazzy bridge, async mode) on **Spielberg**, with the scan at **10 Hz** (to match the car's LiDAR) and odom at 100 Hz, following the left wall:
-
-- `velocity 5.0`, `kp 0.32`, `kd 0.25`, `gain_ref_velocity 5.0`: gains chosen so 5 m/s straights don't weave with a 10 Hz scan. Scheduling brings kp back to about 0.9 in corners.
-- `min_velocity 2.2`: keeps tight hairpins (turn radius about 1 m around the outer wall, grip limit about √(μ·g·R) ≈ 3.2 m/s) about 30% under the grip limit.
-- `slow_front_distance 4.0`: starts braking early enough to get from 5 m/s down to corner speed.
-- `theta_deg 35`: a smaller angle between the rays reacts less to a curve coming up ahead, so the car doesn't swerve on straights before a corner.
-- `max_steering_rate 3.0`, `median_spread_deg 2.0`: smoothing and noise rejection on the steering input.
-
-Result with these values: about **90–95 s** per lap on Spielberg.

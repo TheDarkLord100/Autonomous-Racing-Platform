@@ -26,11 +26,14 @@ from local_planner.corridor import (RefPath, Obstacles, lateral_bounds,
 
 
 def wrap(a):
+    """Wrap an angle (or array of angles) to [-pi, pi)."""
     return (a + np.pi) % (2 * np.pi) - np.pi
 
 
 @dataclass
 class RRTResult:
+    """RRT* output path and tree statistics."""
+
     path: np.ndarray        # (N, 2) final path in base_link, None if no path found
     smoothed: bool          # False -> raw tree path (fallback)
     n_nodes: int
@@ -40,23 +43,29 @@ class RRTResult:
 
 
 class RRTStarPlanner:
+    """RRT* in the car frame inside scan-derived bounds, followed by smoothing."""
+
     def __init__(self, p: dict):
+        """Store the parameter dict and create the random generator."""
         self.p = p
         self.rng = np.random.default_rng(p['seed'] if p['seed'] >= 0 else None)
 
     # ---------------------------------------------------------------- checks
     def edge_free(self, a, b, obstacles, threshold):
+        """Return True if the straight segment a-b keeps the required clearance."""
         L = float(np.linalg.norm(b - a))
         n = max(int(np.ceil(L / self.p['edge_res'])), 1)
         t = np.linspace(0.0, 1.0, n + 1)[:, None]
         return self.clear_ok(a + t * (b - a), obstacles, threshold)
 
     def clear_ok(self, pts, obstacles, threshold):
+        """Return True if every point keeps the required clearance."""
         need = required_clearance(pts, threshold, self.p['near_threshold'],
                                   self.p['near_radius'])
         return bool((obstacles.clearance(pts) >= need).all())
 
     def path_ok(self, pts, obstacles, threshold, kappa_max):
+        """Return True if the path keeps the clearance and the curvature limit."""
         if not self.clear_ok(pts, obstacles, threshold):
             return False
         k = np.abs(heading_curvature(pts)[1][1:-1])
@@ -64,6 +73,13 @@ class RRTStarPlanner:
 
     # ------------------------------------------------------------------ plan
     def plan(self, ref: RefPath, obstacles: Obstacles, threshold, kappa_max) -> RRTResult:
+        """Grow an RRT* tree to a goal at the horizon and return the smoothed path.
+
+        The goal is the clear lateral offset closest to the raceline at s = horizon. The tree
+        path is shortcut and spline-smoothed; if the smoothed path fails the clearance or
+        curvature check, the raw tree path is returned with ``smoothed=False``. ``path`` is
+        None if no goal is clear or the tree does not reach it.
+        """
         p = self.p
         H = min(p['horizon'], ref.length)
 
@@ -96,6 +112,7 @@ class RRTStarPlanner:
         step, r_near = p['max_step'], p['neighbour_radius']
 
         def turn_lim(edge_len):
+            """Return the allowed heading change for an edge of the given length."""
             return kappa_max * edge_len * p['turn_slack']
 
         t0 = time.perf_counter()
@@ -193,6 +210,7 @@ class RRTStarPlanner:
 
     # ----------------------------------------------------------- smoothing
     def shortcut(self, pts, obstacles, threshold):
+        """Replace path sections by straight segments where they are clear."""
         out, i = [pts[0]], 0
         while i < len(pts) - 1:
             j = len(pts) - 1

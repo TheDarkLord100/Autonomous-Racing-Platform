@@ -26,10 +26,12 @@ from .geometry import compose
 
 
 class OdometryMotionModel:
+    """Odometry motion model: propagate particles by an odometry increment with noise."""
 
     def __init__(self, alpha_trans_trans=0.1, alpha_trans_rot=0.05,
                  alpha_lat=0.3, alpha_rot_trans=0.1, alpha_rot_rot=0.1,
                  min_sigma_xy=0.0, min_sigma_theta=0.0, rng=None):
+        """Store the noise coefficients and lower bounds on the noise."""
         self.a_tt = alpha_trans_trans
         self.a_tr = alpha_trans_rot
         self.a_lat = alpha_lat

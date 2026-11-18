@@ -75,6 +75,7 @@ MAPPING_DEFAULTS = {
 
 # ---------------------------------------------------------------- helpers
 def deep_merge(base, over):
+    """Return a copy of ``base`` with ``over`` merged in recursively."""
     out = copy.deepcopy(base)
     for k, v in (over or {}).items():
         if isinstance(v, dict) and isinstance(out.get(k), dict):
@@ -85,10 +86,12 @@ def deep_merge(base, over):
 
 
 def expand(p):
+    """Expand environment variables and ``~`` in a path."""
     return str(Path(os.path.expandvars(str(p))).expanduser())
 
 
 def under(root, p):
+    """Return ``p`` expanded, joined to ``root`` if it is relative."""
     p = expand(p)
     return p if os.path.isabs(p) else str(Path(root) / p)
 
@@ -105,6 +108,7 @@ def map_yaml(path):
 
 
 def wrap(a):
+    """Wrap an angle to [-pi, pi]."""
     return math.atan2(math.sin(a), math.cos(a))
 
 
@@ -119,12 +123,14 @@ def pose_in_frame(spawn, frame_tf):
 
 
 def read_spawn(sim_params):
+    """Return the spawn pose [sx, sy, stheta] from the simulator parameter file."""
     with open(sim_params) as f:
         bridge = yaml.safe_load(f)['bridge']['ros__parameters']
     return [float(bridge['sx']), float(bridge['sy']), float(bridge['stheta'])]
 
 
 def check_exists(items):
+    """Raise FileNotFoundError for the first (name, path) pair whose path does not exist."""
     for name, p in items:
         if not Path(p).exists():
             raise FileNotFoundError(f'{name}: {p} does not exist')
@@ -181,6 +187,13 @@ MAPPING_ARGS = {'controller': ('controller', 'type'),
 
 # ---------------------------------------------------------------- scenario
 def resolve(config_path, params_dir, overrides=None):
+    """Resolve a scenario file into the full run configuration.
+
+    Merges the file over the defaults, applies launch-argument overrides, validates the
+    choices, resolves paths and fills ``derived`` (topics, frames, spawn, TF settings) and
+    ``params`` (per-node parameter files). Raises ValueError or FileNotFoundError on
+    invalid input.
+    """
     with open(config_path) as f:
         user = yaml.safe_load(f) or {}
     cfg = apply_overrides(deep_merge(DEFAULTS, user), overrides or {}, SCENARIO_ARGS)
@@ -296,6 +309,7 @@ def resolve(config_path, params_dir, overrides=None):
 
 
 def describe(cfg):
+    """Return the summary lines printed at start-up for a resolved scenario."""
     d, s, loc = cfg['derived'], cfg['stack'], cfg['localization']
     names = {'gt': 'GT odometry (perfect pose)', 'pf': 'particle filter',
              'carto': 'Cartographer localization', 'scan_matching': 'scan matching (map-free)'}
@@ -315,6 +329,12 @@ def describe(cfg):
 
 # ---------------------------------------------------------------- mapping
 def resolve_mapping(config_path, params_dir, overrides=None):
+    """Resolve a mapping file into the full run configuration.
+
+    Merges the file over the mapping defaults, applies overrides, validates the controller
+    and the world map, and fills ``derived`` and ``params``. Raises ValueError on invalid
+    input.
+    """
     with open(config_path) as f:
         user = yaml.safe_load(f) or {}
     cfg = apply_overrides(deep_merge(MAPPING_DEFAULTS, user), overrides or {}, MAPPING_ARGS)
@@ -363,6 +383,7 @@ def resolve_mapping(config_path, params_dir, overrides=None):
 
 
 def describe_mapping(cfg):
+    """Return the summary lines printed at start-up for a resolved mapping run."""
     d, m, c = cfg['derived'], cfg['mapping'], cfg['controller']
     return [
         f'world map : {map_yaml(cfg["world"]["map"])}',
@@ -376,6 +397,7 @@ def describe_mapping(cfg):
 
 # ---------------------------------------------------------------- run folder
 def make_run_dir(cfg, now=None):
+    """Create ``<log_root>/<YYYYmmdd_HHMMSS>_<tag>/ros_logs`` and return the run folder."""
     stamp = time.strftime('%Y%m%d_%H%M%S', time.localtime(now))
     run_dir = Path(cfg['run']['log_root']) / f'{stamp}_{cfg["run"]["tag"]}'
     (run_dir / 'ros_logs').mkdir(parents=True, exist_ok=True)

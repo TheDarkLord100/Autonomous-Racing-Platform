@@ -1,3 +1,5 @@
+"""Setuptools configuration for the cartographer_slam ROS 2 package."""
+
 from setuptools import find_packages, setup
 import os
 from glob import glob

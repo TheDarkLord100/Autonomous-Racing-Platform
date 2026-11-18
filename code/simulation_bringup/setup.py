@@ -1,3 +1,5 @@
+"""Setuptools configuration for the simulation_bringup ROS 2 package."""
+
 import os
 from glob import glob
 

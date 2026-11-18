@@ -35,8 +35,10 @@ from gap_follow.target_selector import TargetSelector, TargetSelectorConfig
 
 
 class GapFollowNode(Node):
+    """ROS 2 node: Follow-the-Gap on /scan, publishing /drive and optional markers."""
 
     def __init__(self):
+        """Declare parameters, build the modules, create publishers and the scan subscriber."""
         super().__init__('gap_follow_node')
 
         # ---------------- declare parameters ----------------
@@ -90,9 +92,11 @@ class GapFollowNode(Node):
     # Parameters / module wiring
     # ------------------------------------------------------------------
     def _p(self, name):
+        """Return the value of a parameter."""
         return self.get_parameter(name).value
 
     def _build_modules(self):
+        """Create the scan, gap, target, speed and marker modules from the parameters."""
         max_range = self._p('max_range')
         car_width = self._p('car_width')
         # Half-width the disparity extender / gap trim sweep outward, plus a
@@ -143,6 +147,7 @@ class GapFollowNode(Node):
         self.publish_markers = self._p('publish_markers')
 
     def _on_param_update(self, params):
+        """Rebuild the modules after a parameter change."""
         self._build_modules()
         self.get_logger().info(
             'Params updated: ' + ', '.join(f'{p.name}={p.value}' for p in params))
@@ -151,6 +156,7 @@ class GapFollowNode(Node):
     # Callback
     # ------------------------------------------------------------------
     def publish_drive(self, steering_angle, speed):
+        """Publish an AckermannDriveStamped with the given steering and speed."""
         drive_msg = AckermannDriveStamped()
         drive_msg.header.stamp = self.get_clock().now().to_msg()
         drive_msg.header.frame_id = 'base_link'
@@ -160,6 +166,7 @@ class GapFollowNode(Node):
 
     def scan_callback(self, msg: LaserScan):
         # Wall-clock timer: measures real compute time, unaffected by sim time.
+        """Run one Follow-the-Gap step on a scan and publish the drive command."""
         t_start = time.perf_counter()
         sp = self.scan_processor
         ts = self.target_selector
@@ -240,12 +247,14 @@ class GapFollowNode(Node):
     # Timing / visualization (off the control path)
     # ------------------------------------------------------------------
     def _check_budget(self, t_start):
+        """Warn if the control step took longer than 10 ms."""
         control_ms = (time.perf_counter() - t_start) * 1e3
         if control_ms > 10.0:
             self.get_logger().warn(
                 f'control path took {control_ms:.2f} ms (budget: 10ms for 40Hz LiDAR)')
 
     def _publish_no_gap_markers(self, ranges, angles, stamp):
+        """Publish the scan points and a NO GAP text marker."""
         viz = self.marker_visualizer
         debug_markers = MarkerArray()
         debug_markers.markers.append(viz.make_scan_points_marker(ranges, angles, stamp))
@@ -255,6 +264,7 @@ class GapFollowNode(Node):
 
     def _publish_markers(self, ranges, angles, raw_gap_start, raw_gap_end,
                          gap_start, gap_end, target_idx, final_angle, speed, stamp):
+        """Publish the steering arrow and the scan, gap and target debug markers."""
         viz = self.marker_visualizer
         self.marker_pub.publish(
             viz.make_marker(final_angle, self.target_selector.max_steering_rad(), stamp))
@@ -273,6 +283,7 @@ class GapFollowNode(Node):
 
 
 def main(args=None):
+    """Run the gap-follow node until shutdown."""
     rclpy.init(args=args)
     node = GapFollowNode()
     try:

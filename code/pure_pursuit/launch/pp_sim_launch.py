@@ -1,3 +1,5 @@
+"""Launch the raceline publisher, pure pursuit and the lap logger."""
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -9,6 +11,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    """Declare the launch arguments and start the three nodes."""
     cfg = os.path.join(get_package_share_directory('pure_pursuit'), 'config', 'pp_sim.yaml')
     return LaunchDescription([
         DeclareLaunchArgument('csv_path', description='raceline CSV to publish'),

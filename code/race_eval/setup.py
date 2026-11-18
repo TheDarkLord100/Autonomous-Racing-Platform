@@ -1,3 +1,5 @@
+"""Setuptools configuration for the race_eval ROS 2 package."""
+
 from setuptools import find_packages, setup
 
 package_name = 'race_eval'

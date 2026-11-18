@@ -23,6 +23,7 @@ class OccupancyMap:
 
     def __init__(self, data, resolution, origin, occupied_threshold=65,
                  free_threshold=25, max_dist=2.0):
+        """Store the grid, classify free cells and compute the distance field."""
         data = np.asarray(data, dtype=np.int16)
         self.height, self.width = data.shape
         self.resolution = float(resolution)

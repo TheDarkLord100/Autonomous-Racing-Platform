@@ -12,8 +12,10 @@ import math
 
 
 class SpeedPlannerConfig:
+    """Speed limits and scaling settings for SpeedPlanner."""
 
     def __init__(self):
+        """Set the default speed settings."""
         self.max_speed = 4.0               # m/s, straight-line cap
         self.min_speed = 1.0               # m/s, sharp-turn / narrow-gap floor
         self.speed_scale_angle_deg = 20.0  # steering angle (deg) at which speed hits min_speed
@@ -22,17 +24,21 @@ class SpeedPlannerConfig:
 
 
 class SpeedPlanner:
+    """Compute the speed command from the steering angle and the gap width."""
 
     def __init__(self, config: SpeedPlannerConfig):
+        """Store the configuration."""
         self.config = config
 
     def speed_from_steering(self, steering_angle):
+        """Return a speed that falls linearly from max to min as the steering angle grows."""
         angle_frac = min(
             abs(steering_angle) / math.radians(self.config.speed_scale_angle_deg), 1.0)
         return self.config.max_speed - angle_frac * (
             self.config.max_speed - self.config.min_speed)
 
     def speed_from_gap_width(self, gap_width):
+        """Return a speed that rises linearly from min to max with the clearance in the gap."""
         clearance = max(0.0, gap_width - self.config.car_width)
         safety_frac = min(clearance / self.config.min_safe_clearance, 1.0)
         return self.config.min_speed + (
@@ -44,7 +50,9 @@ class SpeedPlanner:
                    self.speed_from_gap_width(gap_width))
 
     def min_speed(self):
+        """Return the configured minimum speed."""
         return self.config.min_speed
 
     def max_speed(self):
+        """Return the configured maximum speed."""
         return self.config.max_speed

@@ -22,10 +22,12 @@ import numpy as np
 
 
 class LikelihoodFieldModel:
+    """Likelihood-field scan model on an OccupancyMap distance field."""
 
     def __init__(self, occ_map, z_hit=0.9, z_rand=0.1, sigma_hit=0.1,
                  effective_beams=20.0, num_beams=60, laser_offset=(0.0, 0.0, 0.0),
                  penalize_non_free=True):
+        """Store the map, mixture weights, beam settings and laser offset."""
         self.map = occ_map
         self.z_hit = z_hit
         self.z_rand = z_rand

@@ -112,3 +112,9 @@ python3 -m colcon build --symlink-install --packages-select f1tenth_gym_ros simu
 
 1. `rviz_config` launch argument in `gym_bridge_launch.py` (else the gym's default RViz opens)
 2. `publish_pose_tf` parameter in `gym_bridge.py` (for `tf_source: localization`)
+
+The patch is against upstream `f1tenth_gym_ros` branch `dev-jazzy`, commit `2c01981`, and also
+contains the earlier bridge changes this project relies on (separate odometry / scan timers,
+`use_rviz`). Apply with `cd <workspace>/src/f1tenth_gym_ros && git apply <repo>/code/simulation_bringup/gym_bridge.patch`.
+Every change this project makes to the simulator is listed in
+[`environment_changes.md`](../../environment_changes.md) at the repository root.

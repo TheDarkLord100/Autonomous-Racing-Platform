@@ -39,6 +39,8 @@ from .resampling import effective_sample_size, low_variance_resample
 
 @dataclass
 class RecoveryConfig:
+    """Augmented-MCL recovery settings (particle injection)."""
+
     enabled: bool = True
     alpha_slow: float = 0.001     # per sensor update
     alpha_fast: float = 0.1
@@ -51,6 +53,8 @@ class RecoveryConfig:
 
 @dataclass
 class ScaleConfig:
+    """Per-particle odometry scale-factor settings."""
+
     enabled: bool = True
     init_std: float = 0.05        # initial spread of k around the current estimate
     walk_std_per_m: float = 0.002 # random walk of k per metre driven
@@ -59,10 +63,16 @@ class ScaleConfig:
 
 
 class ParticleFilter:
+    """Particle filter over (x, y, theta) with an optional per-particle odometry scale.
+
+    Uses a motion model for prediction and a sensor model for weighting; resamples on low
+    effective sample size and injects particles when recovery is enabled.
+    """
 
     def __init__(self, motion_model, sensor_model, num_particles=2000,
                  resample_threshold=0.5, update_min_d=0.02, update_min_a=0.02,
                  recovery=None, occ_map=None, scale=None, rng=None):
+        """Store the models and settings; particles are created by ``initialize``."""
         self.motion_model = motion_model
         self.sensor_model = sensor_model
         self.n = int(num_particles)
@@ -110,6 +120,11 @@ class ParticleFilter:
         self.initialized = True
 
     def _sample_gaussian(self, n, pose, std_xy, std_theta, is_free=None, max_tries=20):
+        """Return ``n`` poses drawn around ``pose`` with the given spreads.
+
+        If ``is_free`` is given, samples in occupied cells are redrawn up to ``max_tries``
+        times.
+        """
         pose = np.asarray(pose, dtype=float)
         p = np.empty((n, 3))
         todo = np.arange(n)
@@ -128,6 +143,7 @@ class ParticleFilter:
         return p
 
     def _sample_scale(self, n):
+        """Return ``n`` odometry scale factors around the current estimate (ones if disabled)."""
         cfg = self.scale_cfg
         if not cfg.enabled:
             return np.ones(n)
@@ -231,6 +247,7 @@ class ParticleFilter:
         return float(min(p, cfg.max_inject_ratio))
 
     def _inject(self, k):
+        """Replace ``k`` particles with samples near the estimate and in free space."""
         cfg = self.recovery
         is_free = self.occ_map.is_free if self.occ_map is not None else None
         n_global = int(self.rng.binomial(k, cfg.global_fraction)) if self.occ_map is not None else 0
@@ -252,6 +269,7 @@ class ParticleFilter:
 
     # -------------------------------------------------------------- estimate
     def _compute_estimate(self):
+        """Compute the weighted mean pose, mean odometry scale and pose covariance."""
         w = self.weights
         x = float(np.dot(w, self.particles[:, 0]))
         y = float(np.dot(w, self.particles[:, 1]))

@@ -23,6 +23,7 @@ import numpy as np
 
 
 def _wrap(a):
+    """Wrap an angle to [-pi, pi)."""
     return (a + np.pi) % (2.0 * np.pi) - np.pi
 
 
@@ -42,11 +43,13 @@ def _compose(a, b):
 
 
 class OdometryNoise:
+    """Integrate noisy odometry from successive true poses."""
 
     def __init__(self, trans_scale_error=0.05, rot_scale_error=0.05,
                  yaw_drift_per_m=0.005, trans_noise=0.02,
                  rot_noise_per_rad=0.02, rot_noise_per_m=0.005,
                  teleport_threshold=1.0, seed=42):
+        """Store the noise parameters and create the seeded random generator."""
         self.trans_scale_error = trans_scale_error
         self.rot_scale_error = rot_scale_error
         self.yaw_drift_per_m = yaw_drift_per_m

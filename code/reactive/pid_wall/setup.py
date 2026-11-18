@@ -1,3 +1,5 @@
+"""Setuptools configuration for the pid_wall ROS 2 package."""
+
 import os
 from glob import glob
 from setuptools import find_packages, setup

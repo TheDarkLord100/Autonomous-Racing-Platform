@@ -16,7 +16,10 @@ from geometry_msgs.msg import Point
 
 
 class MarkerVisualizerConfig:
+    """Frame and sizes for the wall-following RViz markers."""
+
     def __init__(self):
+        """Set the default frame and marker sizes."""
         self.base_frame_id = 'ego_racecar/base_link'
         self.ray_line_width = 0.02
         self.target_line_length = 3.0     # m, how far forward to draw the "hold this line" marker
@@ -30,10 +33,14 @@ class MarkerVisualizerConfig:
 
 
 class MarkerVisualizer:
+    """Build RViz markers for the wall-following controller."""
+
     def __init__(self, config: MarkerVisualizerConfig):
+        """Store the configuration."""
         self.config = config
 
     def _base_marker(self, marker_id, ns, marker_type, stamp):
+        """Return a marker with the common header, namespace, id and type."""
         m = Marker()
         m.header.frame_id = self.config.base_frame_id
         m.header.stamp = stamp
@@ -71,6 +78,7 @@ class MarkerVisualizer:
         return m
 
     def make_status_text_marker(self, error, alpha, Dt, speed, stamp):
+        """Return a text marker with error, look-ahead distance, wall angle and speed."""
         m = self._base_marker(0, 'status_text', Marker.TEXT_VIEW_FACING, stamp)
         m.scale.z = self.config.text_height
         err_frac = min(abs(error) / 0.5, 1.0)  # green when tracking well, red as error grows
@@ -83,6 +91,7 @@ class MarkerVisualizer:
         return m
 
     def make_steering_arrow_marker(self, steering_angle, max_steering_angle, stamp):
+        """Return an arrow marker along the steering angle, scaled by its magnitude."""
         m = self._base_marker(0, 'steering_arrow', Marker.ARROW, stamp)
         frac = min(abs(steering_angle) / max(max_steering_angle, 1e-6), 1.0)
         length = self.config.arrow_length_min + frac * (

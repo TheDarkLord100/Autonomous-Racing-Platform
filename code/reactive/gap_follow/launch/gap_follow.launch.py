@@ -1,3 +1,5 @@
+"""Launch the gap-follow node with config/params.yaml."""
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -9,6 +11,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
+    """Declare ``publish_markers`` and start the gap-follow node."""
     config = os.path.join(
         get_package_share_directory('gap_follow'),
         'config',
