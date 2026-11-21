@@ -1,0 +1,14 @@
+web_bridge_node:
+  ros__parameters:
+    host: 0.0.0.0            # listen on all interfaces (Wi-Fi + Tailscale)
+    port: 8080
+    token: ""                # if set, open http://<jetson>:8080/?token=<token>
+    max_speed_limit: 1.5     # m/s, hard ceiling — the slider can never exceed this
+    default_speed: 0.5       # m/s, slider position at startup
+    max_steering_angle: 0.35 # rad, same as twist_to_ackermann until steering calibration
+    cmd_timeout: 0.25        # s without a cmd from the driver -> disarm + stop
+    stop_hold: 0.5           # s of zero-speed commands after a disarm, then go quiet
+    publish_rate: 50.0       # Hz, /drive publish rate while armed
+    telemetry_rate: 10.0     # Hz, matches the 10 Hz LiDAR
+    scan_points: 180         # scan downsampled to this many points for the browser
+    scan_yaw_offset: 3.14159 # laser -> base_link yaw, keep in sync with lidar.launch.py
