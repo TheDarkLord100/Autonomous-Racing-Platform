@@ -2,9 +2,10 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import LaunchConfigurationEquals
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
+from launch.substitutions import EqualsSubstitution, LaunchConfiguration
 
 
 def generate_launch_description():
@@ -36,10 +37,12 @@ def generate_launch_description():
              name='vesc_to_odom_node', parameters=[vesc_config]),
         Node(package='car_bringup', executable='twist_to_ackermann',
              name='twist_to_ackermann_node', parameters=[vesc_config],
-             condition=LaunchConfigurationEquals('teleop', 'keyboard')),
+             condition=IfCondition(
+                 EqualsSubstitution(LaunchConfiguration('teleop'), 'keyboard'))),
         Node(package='car_bringup', executable='web_bridge',
              name='web_bridge_node', parameters=[web_bridge_config],
              output='screen',
-             condition=LaunchConfigurationEquals('teleop', 'web')),
+             condition=IfCondition(
+                 EqualsSubstitution(LaunchConfiguration('teleop'), 'web'))),
         lidar_launch,
     ])
