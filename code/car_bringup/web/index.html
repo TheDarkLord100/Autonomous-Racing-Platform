@@ -9,12 +9,22 @@
   * { box-sizing: border-box; -webkit-user-select: none; user-select: none; }
   html, body { margin: 0; height: 100%; background: #111; color: #ddd;
                font: 15px/1.3 system-ui, sans-serif; overflow: hidden; }
-  body { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+  body { display: grid; grid-template-rows: auto 1fr auto;
+         height: 100vh; height: 100dvh;   /* dvh = visible area, excludes address bar */
+         padding-bottom: env(safe-area-inset-bottom); }
   #bar { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 8px 12px;
          background: #1b1b1b; border-bottom: 1px solid #333; }
   #bar b { color: #fff; font-variant-numeric: tabular-nums; }
-  .bad { color: #f66 !important; } .ok { color: #6d6 !important; }
-  #main { display: grid; grid-template-columns: 1fr minmax(0, 1.6fr) 1fr; min-height: 0; }
+  .bad { color: #f66 !important; } .ok { color: #6d6 !important; } .warn { color: #fb4 !important; }
+  #hint { position: absolute; top: 10px; width: 100%; text-align: center; font-size: 18px;
+          color: #fb4; pointer-events: none; }
+  #main { display: grid; grid-template-columns: 1fr minmax(0, 1.6fr) 1fr;
+          grid-template-areas: "thr scan str"; min-height: 0; }
+  #throttle { grid-area: thr; } #scanwrap { grid-area: scan; } #steer { grid-area: str; }
+  @media (orientation: portrait) {      /* tablet held upright: scan on top, pads below */
+    #main { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+            grid-template-areas: "scan scan" "thr str"; }
+  }
   .pad { position: relative; margin: 12px; border-radius: 16px; background: #1e1e1e;
          border: 2px solid #333; touch-action: none; }
   .pad.active { border-color: #4a8; }
@@ -46,6 +56,7 @@
   <span>RTT <b id="rtt">–</b></span>
   <span>Role <b id="role">–</b></span>
   <span>State <b id="state">–</b></span>
+  <span>Gap <b id="gap">–</b></span>
   <span>Battery <b id="volt">–</b></span>
   <span>Speed <b id="speed">–</b></span>
   <span>Cmd <b id="cmd">–</b></span>
@@ -54,7 +65,7 @@
 <div id="main">
   <div id="throttle" class="pad"><div class="axis"></div><div class="knob"></div>
     <div class="label">throttle</div></div>
-  <div id="scanwrap"><canvas id="scan"></canvas></div>
+  <div id="scanwrap"><canvas id="scan"></canvas><div id="hint"></div></div>
   <div id="steer" class="pad"><div class="axis"></div><div class="knob"></div>
     <div class="label">steering</div></div>
 </div>
@@ -100,9 +111,15 @@ function onTelemetry(m) {
   role = m.role; armed = m.armed;
   $('role').textContent = role;
   $('claim').style.display = (role === 'viewer' && m.driver_free) ? '' : 'none';
-  $('state').textContent = armed ? 'ARMED' : ('safe' + (m.reason ? ' (' + m.reason + ')' : ''));
-  $('state').className = armed ? 'ok' : 'bad';
+  const st = m.state;   // SAFE | ARMED | DRIVING | HOLD
+  $('state').textContent = st === 'SAFE' && m.reason ? 'SAFE (' + m.reason + ')' : st;
+  $('state').className = st === 'SAFE' ? 'bad' : (st === 'HOLD' ? 'warn' : 'ok');
   $('arm').className = armed ? 'armed' : '';
+  $('arm').textContent = armed ? 'ARMED' : 'ARM';
+  $('gap').textContent = m.cmd_age_ms === null ? '–' : m.cmd_age_ms + ' ms';
+  $('hint').textContent =
+      st === 'HOLD' ? 'Link stalled: holding' :
+      (m.need_neutral && cmd.throttle !== 0 ? 'Release throttle to resume' : '');
   $('volt').textContent = fmt(m.voltage, 2, ' V');
   $('speed').textContent = fmt(m.odom_speed, 2, ' m/s');
   $('cmd').textContent = m.cmd_speed.toFixed(2) + ' m/s, ' +

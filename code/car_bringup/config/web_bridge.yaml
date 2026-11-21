@@ -6,7 +6,8 @@ web_bridge_node:
     max_speed_limit: 1.5     # m/s, hard ceiling — the slider can never exceed this
     default_speed: 0.5       # m/s, slider position at startup
     max_steering_angle: 0.35 # rad, same as twist_to_ackermann until steering calibration
-    cmd_timeout: 0.25        # s without a cmd from the driver -> disarm + stop
+    cmd_timeout: 0.5         # s without a cmd from the driver -> HOLD (zero speed, still armed)
+    link_lost_timeout: 3.0   # s in HOLD -> SAFE (disarmed, ARM needed again)
     stop_hold: 0.5           # s of zero-speed commands after a disarm, then go quiet
     publish_rate: 50.0       # Hz, /drive publish rate while armed
     telemetry_rate: 10.0     # Hz, matches the 10 Hz LiDAR

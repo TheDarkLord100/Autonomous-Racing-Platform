@@ -12,10 +12,19 @@ Browser -> car (JSON):
 
 Car -> browser: {"type": "telemetry", ...} at telemetry_rate.
 
+States (reported to the browser as "state"):
+    SAFE     disarmed, nothing published. ARM is needed to leave this state.
+    ARMED    armed, throttle at zero, zero speed published.
+    DRIVING  armed and the driver is commanding motion.
+    HOLD     armed, but no cmd for cmd_timeout s (link stall): zero speed is published.
+             Fresh cmds resume driving, but only after the throttle returns to
+             neutral, so the car never lurches off a thumb held during the stall.
+
 Safety:
-    - Starts disarmed; driver must tap ARM. Only one client (the driver) can command.
-    - Watchdog: if no cmd for cmd_timeout s, or the driver disconnects, the car is
-      disarmed, zero speed is published for stop_hold s, then publishing stops.
+    - Only one client (the driver) can command.
+    - HOLD lasting link_lost_timeout s, driver disconnect, STOP, or the page going
+      to the background -> SAFE. Zero speed is published for stop_hold s, then
+      publishing stops.
     - Speed is always clamped to max_speed_limit, whatever the browser sends.
 """
 
@@ -52,7 +61,8 @@ class WebBridge(Node):
         self.token = p('token', '').value
         self.max_speed_limit = p('max_speed_limit', 1.5).value
         self.max_steering_angle = p('max_steering_angle', 0.35).value
-        self.cmd_timeout = p('cmd_timeout', 0.25).value
+        self.cmd_timeout = p('cmd_timeout', 0.5).value
+        self.link_lost_timeout = p('link_lost_timeout', 3.0).value
         self.stop_hold = p('stop_hold', 0.5).value
         self.publish_rate = p('publish_rate', 50.0).value
         self.telemetry_rate = p('telemetry_rate', 10.0).value
@@ -63,6 +73,8 @@ class WebBridge(Node):
         # Shared between the ROS executor thread and the asyncio thread.
         self.lock = threading.Lock()
         self.armed = False
+        self.hold = False          # armed, but commands have stalled
+        self.need_neutral = False  # ignore throttle until it returns to ~0
         self.disarm_reason = 'not armed yet'
         self.throttle = 0.0
         self.steer = 0.0
@@ -94,8 +106,15 @@ class WebBridge(Node):
     def on_publish_timer(self):
         now = time.monotonic()
         with self.lock:
-            if self.armed and now - self.last_cmd_time > self.cmd_timeout:
-                self._disarm('link timeout')
+            if self.armed:
+                age = now - self.last_cmd_time
+                if age > self.link_lost_timeout:
+                    self._disarm('link lost')
+                elif age > self.cmd_timeout and not self.hold:
+                    self.hold = True
+                    self.need_neutral = True
+                    self.throttle, self.steer = 0.0, 0.0
+                    self.get_logger().warn('Link stalled: holding at zero speed')
             if self.armed:
                 speed = self.throttle * self.speed_cap
                 steer = self.steer * self.max_steering_angle
@@ -121,6 +140,7 @@ class WebBridge(Node):
             self.stop_until = time.monotonic() + self.stop_hold
             self.get_logger().warn(f'Disarmed: {reason}')
         self.armed = False
+        self.hold = False
         self.disarm_reason = reason
         self.throttle = 0.0
         self.steer = 0.0
@@ -163,7 +183,7 @@ class WebBridge(Node):
     async def handle_ws(self, request):
         if not self.authorised(request):
             return web.Response(status=403, text='bad token')
-        ws = web.WebSocketResponse(heartbeat=1.0)
+        ws = web.WebSocketResponse(heartbeat=5.0)  # dead-socket check only
         await ws.prepare(request)
         self.ws_clients.add(ws)
         if self.driver is None:
@@ -205,7 +225,12 @@ class WebBridge(Node):
                 if math.isfinite(t) and math.isfinite(s):
                     self.last_cmd_time = now
                     if self.armed:
-                        self.throttle = clamp(t, -1.0, 1.0)
+                        if self.hold:
+                            self.hold = False
+                            self.get_logger().info('Link back: release throttle to resume')
+                        if self.need_neutral and abs(t) < 0.05:
+                            self.need_neutral = False
+                        self.throttle = 0.0 if self.need_neutral else clamp(t, -1.0, 1.0)
                         self.steer = clamp(s, -1.0, 1.0)
             elif kind == 'speed':
                 v = float(m['value'])
@@ -215,6 +240,8 @@ class WebBridge(Node):
                 self.throttle, self.steer = 0.0, 0.0
                 self.last_cmd_time = now
                 self.armed = True
+                self.hold = False
+                self.need_neutral = True
                 self.disarm_reason = ''
                 self.get_logger().info('Armed')
             elif kind == 'estop':
@@ -223,11 +250,23 @@ class WebBridge(Node):
                 self._disarm('driver released control')
                 self.driver = None
 
+    def state(self):
+        """Caller must hold self.lock."""
+        if not self.armed:
+            return 'SAFE'
+        if self.hold:
+            return 'HOLD'
+        return 'DRIVING' if self.throttle != 0.0 else 'ARMED'
+
     def telemetry(self):
         with self.lock:
+            age = time.monotonic() - self.last_cmd_time
             return {
                 'type': 'telemetry',
+                'state': self.state(),
                 'armed': self.armed,
+                'need_neutral': self.armed and self.need_neutral,
+                'cmd_age_ms': round(age * 1000) if self.armed else None,
                 'reason': self.disarm_reason,
                 'speed_cap': self.speed_cap,
                 'speed_limit': self.max_speed_limit,
