@@ -77,7 +77,7 @@ class WebBridge(Node):
         self.scan = None
 
         # Only touched from the asyncio thread.
-        self.clients = set()
+        self.ws_clients = set()
         self.driver = None
 
         self.pub = self.create_publisher(AckermannDriveStamped, 'drive', 10)
@@ -165,7 +165,7 @@ class WebBridge(Node):
             return web.Response(status=403, text='bad token')
         ws = web.WebSocketResponse(heartbeat=1.0)
         await ws.prepare(request)
-        self.clients.add(ws)
+        self.ws_clients.add(ws)
         if self.driver is None:
             self.driver = ws
         self.get_logger().info(f'Client connected: {request.remote} '
@@ -179,7 +179,7 @@ class WebBridge(Node):
                 except (ValueError, TypeError, KeyError):
                     pass  # ignore malformed messages
         finally:
-            self.clients.discard(ws)
+            self.ws_clients.discard(ws)
             if self.driver is ws:
                 self.driver = None
                 with self.lock:
@@ -243,11 +243,11 @@ class WebBridge(Node):
         period = 1.0 / self.telemetry_rate
         while rclpy.ok():
             await asyncio.sleep(period)
-            if not self.clients:
+            if not self.ws_clients:
                 continue
             data = self.telemetry()
             data['driver_free'] = self.driver is None
-            for ws in list(self.clients):
+            for ws in list(self.ws_clients):
                 data['role'] = 'driver' if ws is self.driver else 'viewer'
                 try:
                     await ws.send_str(json.dumps(data))
