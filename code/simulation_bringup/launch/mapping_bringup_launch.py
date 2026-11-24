@@ -36,6 +36,7 @@ def _setup(context):
     overrides = {k: LaunchConfiguration(k).perform(context) for k in MAPPING_ARGS}
     cfg = resolve_mapping(str(config_path), str(share / 'config' / 'params'), overrides)
     d, run, m, P = cfg['derived'], cfg['run'], cfg['mapping'], cfg['params']
+    lua = LaunchConfiguration('lua').perform(context)
     Path(m['out_dir']).mkdir(parents=True, exist_ok=True)
 
     run_dir, out = start_run(cfg, describe_mapping(cfg))
@@ -57,9 +58,9 @@ def _setup(context):
         say(f'  ros2 run nav2_map_server map_saver_cli -t /carto/map -f {d["image_out"]}', '32'),
     ]
 
-    cnode = carto_node(cfg, d['carto_overrides'], 'carto_mapping.lua')
+    cnode = carto_node(cfg, d['carto_overrides'], lua)
     out += [
-        cartographer_node('carto_mapping.lua', d['odom_in']),
+        cartographer_node(lua, d['odom_in']),
         node('cartographer_ros', 'cartographer_occupancy_grid_node',
              'cartographer_occupancy_grid_node',
              arguments=['-resolution', '0.05', '-publish_period_sec', '1.0'],
@@ -85,5 +86,7 @@ def generate_launch_description():
                               description='where to save, relative to data_root'),
         DeclareLaunchArgument('map_name', default_value='', description='saved file name'),
         DeclareLaunchArgument('tag', default_value='', description='override run.tag'),
+        DeclareLaunchArgument('lua', default_value='carto_mapping.lua',
+                              description='Cartographer config in cartographer_slam/config'),
         OpaqueFunction(function=_setup),
     ])

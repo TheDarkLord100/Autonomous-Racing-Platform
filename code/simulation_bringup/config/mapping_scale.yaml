@@ -1,0 +1,28 @@
+# Mapping run with strong odometry noise (odom_noise_strong.yaml).
+run:
+  tag: auto
+  log_root: ~/f1tenth_simulation_logs
+  viz: rviz
+  record_bag: false
+  monitor: true
+
+data_root: ~/f1tenth_sim_ws/src/Autonomous-Racing-Platform/data
+
+world:
+  map: ~/f1tenth_sim_ws/f1tenth_racetracks/Spielberg/Spielberg_map
+
+mapping:
+  map_name: Spielberg
+  out_dir: Spielberg/carto_scale        # changed
+  odom_noise: true                       # changed
+
+controller:
+  type: ftg
+  max_speed: 3.0
+
+params:
+  sim: sim.yaml
+  carto: carto_params.yaml
+  odom_noise: odom_noise_scale.yaml     # changed
+  gap_follow: gap_follow.yaml
+  pid: pid_wall.yaml

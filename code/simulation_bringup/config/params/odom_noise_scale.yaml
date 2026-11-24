@@ -1,0 +1,16 @@
+# Base random noise (the good no-scale run) + a small 2% systematic scale error on
+# distance and rotation. Same seed -> repeatable.
+odom_noise:
+  ros__parameters:
+    input_topic: /ego_racecar/odom
+    output_topic: /ego_racecar/odom_noisy
+    odom_frame: odom
+    base_frame: ego_racecar/base_link
+    random_seed: 42
+    trans_scale_error: 0.02
+    rot_scale_error: 0.02
+    yaw_drift_per_m: 0.005
+    trans_noise: 0.02
+    rot_noise_per_rad: 0.02
+    rot_noise_per_m: 0.005
+    teleport_threshold: 1.0
