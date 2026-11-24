@@ -120,14 +120,13 @@ def bag(cfg, run_dir):
                           cfg['run']['bag_topics'], name='bag_record', output='log')
 
 
-def cartographer_node(lua, odom_topic, extra_args=()):
+def cartographer_node(lua, odom_topic, extra_args=(), params=()):
     """Return the cartographer_node process with the given lua file and odometry topic."""
     config_dir = os.path.join(get_package_share_directory('cartographer_slam'), 'config')
-    return node('cartographer_ros', 'cartographer_node', 'cartographer_node',
+    return node('cartographer_ros', 'cartographer_node', 'cartographer_node', params,
                 arguments=['-configuration_directory', config_dir,
                            '-configuration_basename', lua] + list(extra_args),
                 remappings=[('scan', '/scan'), ('odom', odom_topic)])
-
 
 def carto_node(cfg, overrides, lua):
     """Return the carto_node wrapper with its parameter file, overrides and lua file."""

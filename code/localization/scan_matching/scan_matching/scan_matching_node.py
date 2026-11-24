@@ -12,6 +12,7 @@ import math
 import re
 from collections import Counter, deque
 import time
+from std_msgs.msg import Float32
 
 import numpy as np
 import rclpy
@@ -124,6 +125,7 @@ class ScanMatchingNode(Node):
         self.pose_pub = self.create_publisher(PoseStamped,
                                               self.out_pose_topic, 10)
         self.path_pub = self.create_publisher(Path, self.out_path_topic, 1)
+        self.ms_pub = self.create_publisher(Float32, '/scan_match/compute_ms', 10)
         self.path = Path()
         self.path.header.frame_id = self.map_frame
         self.create_timer(5.0, self.log_stats)
@@ -241,6 +243,7 @@ class ScanMatchingNode(Node):
         ms = 1e3 * (time.perf_counter() - t0)
 
         if out.icp is not None:
+            self.ms_pub.publish(Float32(data=ms))
             s = self.stats
             s['n'] += 1
             s['ms_sum'] += ms

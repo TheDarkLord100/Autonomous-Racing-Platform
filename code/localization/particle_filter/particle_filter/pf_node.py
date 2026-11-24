@@ -18,6 +18,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, qos_profile_sensor_data
 from rclpy.time import Time
 import tf2_ros
+from std_msgs.msg import Float32
 
 from geometry_msgs.msg import (Pose, PoseArray, PoseStamped,
                                PoseWithCovarianceStamped, TransformStamped)
@@ -166,7 +167,8 @@ class ParticleFilterNode(Node):
         self.pose_pub = self.create_publisher(PoseStamped, self.pose_topic, 10)
         self.odom_pub = self.create_publisher(Odometry, self.odom_out_topic, 10)
         self.particles_pub = self.create_publisher(PoseArray, self.particles_topic, 1)
-
+        self.ms_pub = self.create_publisher(Float32, '/pf/compute_ms', 10)
+        
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self) if self.publish_tf else None
@@ -306,6 +308,7 @@ class ParticleFilterNode(Node):
 
         if updated:
             self._log_stats(dt)
+            self.ms_pub.publish(Float32(data=1e3 * dt))
 
         self._publish_pose(msg.header.stamp)
         self.scan_count += 1
