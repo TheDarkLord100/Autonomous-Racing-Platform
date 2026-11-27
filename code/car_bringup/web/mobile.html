@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Car (one-hand)</title>
+<style>
+  * { box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+  html, body { margin: 0; height: 100%; background: #111; color: #ddd;
+               font: 15px/1.3 system-ui, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; gap: 10px;
+         height: 100vh; height: 100dvh; padding: 10px 12px;
+         padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  #status { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+  #status b { color: #fff; font-variant-numeric: tabular-nums; }
+  #state { font-size: 20px; }
+  .bad { color: #f66 !important; } .ok { color: #6d6 !important; } .warn { color: #fb4 !important; }
+  #scanwrap { position: relative; flex: 1; min-height: 80px; }
+  #scan { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #hint { position: absolute; top: 4px; width: 100%; text-align: center; color: #fb4;
+          font-size: 16px; pointer-events: none; }
+  #speedrow { display: flex; align-items: center; gap: 10px; }
+  #speedrow input { flex: 1; height: 32px; }
+  #stick { position: relative; align-self: center; touch-action: none;
+           width: min(88vw, 44vh); aspect-ratio: 1; border-radius: 50%;
+           background: radial-gradient(circle, #222 0 60%, #1a1a1a 61%);
+           border: 2px solid #333; }
+  #stick.active { border-color: #4a8; }
+  #stick .cross { position: absolute; background: #2c2c2c; pointer-events: none; }
+  #stick .h { left: 8%; right: 8%; top: 50%; height: 2px; }
+  #stick .v { top: 8%; bottom: 8%; left: 50%; width: 2px; }
+  #knob { position: absolute; width: 28%; aspect-ratio: 1; border-radius: 50%;
+          background: #4a8; opacity: .9; pointer-events: none;
+          left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  #buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button { font: inherit; font-weight: 700; font-size: 18px; border: 0; border-radius: 12px;
+           padding: 16px 0; color: #fff; touch-action: manipulation; }
+  #arm { background: #2a6; } #arm.armed { background: #555; }
+  #estop { background: #d22; }
+  #claim { background: #36a; display: none; grid-column: 1 / -1; }
+  #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+             background: rgba(0,0,0,.7); font-size: 20px; color: #f66; pointer-events: none;
+             text-align: center; padding: 20px; }
+</style>
+</head>
+<body>
+<div id="status">
+  <b id="state">–</b>
+  <span>Bat <b id="volt">–</b></span>
+  <span>Spd <b id="speed">–</b></span>
+  <span>RTT <b id="rtt">–</b></span>
+  <span id="linkwrap">Link <b id="link" class="bad">offline</b></span>
+</div>
+
+<div id="scanwrap"><canvas id="scan"></canvas><div id="hint"></div></div>
+
+<div id="speedrow">
+  <span>Max <b id="capval">–</b></span>
+  <input id="cap" type="range" min="0" max="1.5" step="0.05" value="0.5">
+</div>
+
+<div id="stick"><div class="cross h"></div><div class="cross v"></div><div id="knob"></div></div>
+
+<div id="buttons">
+  <button id="claim">TAKE CONTROL</button>
+  <button id="arm">ARM</button>
+  <button id="estop">STOP</button>
+</div>
+<div id="overlay">Connection lost — car stopped</div>
+
+<script>
+'use strict';
+// One 360° stick: up/down = throttle, left/right = steering.
+// The stick direction is the direction of travel, so when reversing the steering
+// is mirrored (stick down-left = back up towards the left). Set to false for
+// plain RC-style steering.
+const STEER_FOLLOWS_STICK_IN_REVERSE = true;
+
+const $ = (id) => document.getElementById(id);
+const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') +
+              location.host + '/ws' + location.search;   // forwards ?token=
+let ws = null, role = 'viewer', armed = false, capDragging = false;
+const cmd = { throttle: 0, steer: 0 };
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function connect() {
+  ws = new WebSocket(wsUrl);
+  ws.onopen = () => { $('link').textContent = 'online'; $('link').className = 'ok';
+                      $('overlay').style.display = 'none'; };
+  ws.onclose = () => { $('link').textContent = 'offline'; $('link').className = 'bad';
+                       $('overlay').style.display = 'flex'; armed = false;
+                       setTimeout(connect, 1000); };
+  ws.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.type === 'pong') $('rtt').textContent = Math.round(performance.now() - m.t) + ' ms';
+    else if (m.type === 'telemetry') onTelemetry(m);
+  };
+}
+
+const fmt = (v, d, unit) => (v === null || v === undefined) ? '–' : v.toFixed(d) + unit;
+
+function onTelemetry(m) {
+  role = m.role; armed = m.armed;
+  const st = m.state;   // SAFE | ARMED | DRIVING | HOLD
+  $('state').textContent = role === 'viewer' ? 'VIEW ONLY'
+                         : (st === 'SAFE' && m.reason ? 'SAFE (' + m.reason + ')' : st);
+  $('state').className = st === 'SAFE' ? 'bad' : (st === 'HOLD' ? 'warn' : 'ok');
+  $('claim').style.display = (role === 'viewer' && m.driver_free) ? '' : 'none';
+  $('arm').className = armed ? 'armed' : '';
+  $('arm').textContent = armed ? 'ARMED' : 'ARM';
+  $('volt').textContent = fmt(m.voltage, 1, ' V');
+  $('speed').textContent = fmt(m.odom_speed, 2, ' m/s');
+  $('hint').textContent =
+      st === 'HOLD' ? 'Link stalled: holding' :
+      (m.need_neutral && cmd.throttle !== 0 ? 'Centre the stick to resume' : '');
+  const cap = $('cap');
+  cap.max = m.speed_limit;
+  if (!capDragging) cap.value = m.speed_cap;
+  $('capval').textContent = m.speed_cap.toFixed(2) + ' m/s';
+  if (m.scan) drawScan(m.scan);
+}
+
+// ---- 360° stick ----
+(function () {
+  const el = $('stick'), knob = $('knob');
+  let pid = null;
+  function update(e) {
+    const r = el.getBoundingClientRect();
+    let dx = (e.clientX - r.left) / r.width * 2 - 1;     // -1..1, right +
+    let dy = -((e.clientY - r.top) / r.height * 2 - 1);  // -1..1, up +
+    let len = Math.hypot(dx, dy);
+    if (len > 1) { dx /= len; dy /= len; len = 1; }
+    knob.style.left = (50 + dx * 36) + '%';
+    knob.style.top = (50 - dy * 36) + '%';
+    if (len < 0.08) { cmd.throttle = 0; cmd.steer = 0; return; }   // centre deadzone
+    // Map the circle onto the square so the rim gives full throttle AND full
+    // steering on the diagonals (otherwise a diagonal tops out at 0.71 each).
+    const sq = len / Math.max(Math.abs(dx), Math.abs(dy));
+    const x = Math.max(-1, Math.min(1, dx * sq));
+    const y = Math.max(-1, Math.min(1, dy * sq));
+    cmd.throttle = Math.abs(y) < 0.05 ? 0 : y;
+    let steer = -x;                                   // ROS: positive angle = left
+    if (STEER_FOLLOWS_STICK_IN_REVERSE && cmd.throttle < 0) steer = -steer;
+    cmd.steer = steer;
+  }
+  function reset() {
+    pid = null; el.classList.remove('active');
+    knob.style.left = '50%'; knob.style.top = '50%';
+    cmd.throttle = 0; cmd.steer = 0;
+  }
+  el.addEventListener('pointerdown', (e) => {
+    if (pid !== null) return;
+    pid = e.pointerId; el.setPointerCapture(pid); el.classList.add('active'); update(e);
+  });
+  el.addEventListener('pointermove', (e) => { if (e.pointerId === pid) update(e); });
+  for (const t of ['pointerup', 'pointercancel', 'lostpointercapture'])
+    el.addEventListener(t, (e) => { if (e.pointerId === pid) reset(); });
+})();
+
+// ---- buttons / slider ----
+$('arm').onclick = () => send({ type: 'arm' });
+$('estop').onclick = () => send({ type: 'estop' });
+$('claim').onclick = () => send({ type: 'claim' });
+$('cap').addEventListener('pointerdown', () => { capDragging = true; });
+$('cap').addEventListener('pointerup', () => { capDragging = false; });
+$('cap').addEventListener('input', (e) => send({ type: 'speed', value: parseFloat(e.target.value) }));
+document.addEventListener('visibilitychange', () => { if (document.hidden) send({ type: 'estop' }); });
+
+// ---- loops: 20 Hz commands (also the watchdog heartbeat), 2 Hz ping ----
+setInterval(() => { if (role === 'driver') send({ type: 'cmd', ...cmd }); }, 50);
+setInterval(() => send({ type: 'ping', t: performance.now() }), 500);
+
+// ---- scan view: forward is up, 1 m rings ----
+const canvas = $('scan'), ctx = canvas.getContext('2d');
+const VIEW_RADIUS_M = 4;
+function drawScan(s) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+    canvas.width = w * dpr; canvas.height = h * dpr;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2, k = Math.min(w, h) / 2 / VIEW_RADIUS_M;
+  ctx.strokeStyle = '#2a2a2a';
+  for (let r = 1; r <= VIEW_RADIUS_M; r++) {
+    ctx.beginPath(); ctx.arc(cx, cy, r * k, 0, 2 * Math.PI); ctx.stroke();
+  }
+  ctx.fillStyle = '#4a8';
+  ctx.fillRect(cx - 0.1 * k, cy - 0.3 * k, 0.2 * k, 0.38 * k);
+  ctx.fillStyle = '#f84';
+  for (let i = 0; i < s.ranges.length; i++) {
+    const r = s.ranges[i];
+    if (!r) continue;
+    const a = s.angle_min + i * s.angle_inc;
+    const x = r * Math.cos(a), y = r * Math.sin(a);
+    ctx.fillRect(cx - y * k - 1.5, cy - x * k - 1.5, 3, 3);
+  }
+}
+
+connect();
+</script>
+</body>
+</html>

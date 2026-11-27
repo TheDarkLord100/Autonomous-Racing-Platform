@@ -98,8 +98,7 @@ class WebBridge(Node):
         self.create_subscription(LaserScan, 'scan', self.on_scan, qos_profile_sensor_data)
         self.create_timer(1.0 / self.publish_rate, self.on_publish_timer)
 
-        self.index_path = os.path.join(
-            get_package_share_directory('car_bringup'), 'web', 'index.html')
+        self.web_dir = os.path.join(get_package_share_directory('car_bringup'), 'web')
 
     # ---------------- ROS side (executor thread) ----------------
 
@@ -175,10 +174,12 @@ class WebBridge(Node):
     def authorised(self, request):
         return not self.token or request.query.get('token') == self.token
 
-    async def handle_index(self, request):
-        if not self.authorised(request):
-            return web.Response(status=403, text='bad token')
-        return web.FileResponse(self.index_path)
+    def page(self, name):
+        async def handler(request):
+            if not self.authorised(request):
+                return web.Response(status=403, text='bad token')
+            return web.FileResponse(os.path.join(self.web_dir, name))
+        return handler
 
     async def handle_ws(self, request):
         if not self.authorised(request):
@@ -295,7 +296,8 @@ class WebBridge(Node):
 
     async def serve(self):
         app = web.Application()
-        app.router.add_get('/', self.handle_index)
+        app.router.add_get('/', self.page('index.html'))         # tablet: two pads
+        app.router.add_get('/mobile', self.page('mobile.html'))  # phone: one 360° stick
         app.router.add_get('/ws', self.handle_ws)
         runner = web.AppRunner(app)
         await runner.setup()
