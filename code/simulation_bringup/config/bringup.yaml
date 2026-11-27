@@ -20,10 +20,10 @@ world:                               # what the simulated LiDAR sees: the truth
   map: ~/f1tenth_sim_ws/f1tenth_racetracks/Spielberg/Spielberg_map
 
 stack:                               # what the stack believes
-  map: Spielberg/carto/Spielberg_map.yaml
+  map: Spielberg/carto_strong/Spielberg_map.yaml
   frame: carto_map
   tf: [0.0, 0.0, -2.879]             # pose of `frame` in the gym map frame (x, y, yaw)
-  raceline: Spielberg/carto/raceline/Spielberg_carto_strong_mincurv.csv
+  raceline: Spielberg/carto_strong/raceline/Spielberg_carto_strong_mincurv.csv
   carto_state: ''                    # carto only: sidecar with pbstream; '' = found next to map
 
 localization:
