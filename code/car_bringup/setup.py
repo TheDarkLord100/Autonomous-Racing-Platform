@@ -30,6 +30,7 @@ setup(
         'console_scripts': [
             'twist_to_ackermann = car_bringup.twist_to_ackermann:main',
             'web_bridge = car_bringup.web_bridge:main',
+            'scan_filter = car_bringup.scan_filter:main',
         ],
     },
 )

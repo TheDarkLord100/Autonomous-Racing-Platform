@@ -13,6 +13,15 @@ def generate_launch_description():
         name='sllidar_node',
         parameters=[cfg],
         output='screen',
+        remappings=[('scan', 'scan_raw')],
+    )
+
+    # Rotates scan_raw (laser frame) into base_link orientation and publishes /scan
+    scan_filter = Node(
+        package='car_bringup',
+        executable='scan_filter',
+        name='scan_filter_node',
+        parameters=[{'yaw_offset': 3.14159, 'frame_id': 'base_link'}],
     )
 
     # RPLiDAR's laser frame +x points opposite the housing arrow -> yaw = pi
@@ -26,4 +35,4 @@ def generate_launch_description():
                    '--frame-id', 'base_link', '--child-frame-id', 'laser'],
     )
 
-    return LaunchDescription([lidar, base_to_laser])
+    return LaunchDescription([lidar, scan_filter, base_to_laser])

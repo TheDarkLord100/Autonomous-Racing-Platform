@@ -8,8 +8,9 @@ web_bridge_node:
     max_steering_angle: 0.35 # rad, same as twist_to_ackermann until steering calibration
     cmd_timeout: 0.5         # s without a cmd from the driver -> HOLD (zero speed, still armed)
     link_lost_timeout: 3.0   # s in HOLD -> SAFE (disarmed, ARM needed again)
+    auto_timeout: 0.3        # s since the last drive_auto msg before AUTO publishes zero speed
     stop_hold: 0.5           # s of zero-speed commands after a disarm, then go quiet
     publish_rate: 50.0       # Hz, /drive publish rate while armed
     telemetry_rate: 10.0     # Hz, matches the 10 Hz LiDAR
     scan_points: 180         # scan downsampled to this many points for the browser
-    scan_yaw_offset: 3.14159 # laser -> base_link yaw, keep in sync with lidar.launch.py
+    scan_yaw_offset: 0.0     # /scan is already rotated into base_link by scan_filter

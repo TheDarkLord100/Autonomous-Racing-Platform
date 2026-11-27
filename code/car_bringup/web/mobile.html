@@ -37,7 +37,9 @@
   button { font: inherit; font-weight: 700; font-size: 18px; border: 0; border-radius: 12px;
            padding: 16px 0; color: #fff; touch-action: manipulation; }
   #arm { background: #2a6; } #arm.armed { background: #555; }
+  #auto { background: #a60; touch-action: none; } #auto.on { background: #fb4; color: #000; }
   #estop { background: #d22; }
+  #auto { grid-column: 1 / -1; }
   #claim { background: #36a; display: none; grid-column: 1 / -1; }
   #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
              background: rgba(0,0,0,.7); font-size: 20px; color: #f66; pointer-events: none;
@@ -64,6 +66,7 @@
 
 <div id="buttons">
   <button id="claim">TAKE CONTROL</button>
+  <button id="auto">AUTO (hold)</button>
   <button id="arm">ARM</button>
   <button id="estop">STOP</button>
 </div>
@@ -81,7 +84,7 @@ const $ = (id) => document.getElementById(id);
 const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') +
               location.host + '/ws' + location.search;   // forwards ?token=
 let ws = null, role = 'viewer', armed = false, capDragging = false;
-const cmd = { throttle: 0, steer: 0 };
+const cmd = { throttle: 0, steer: 0, auto: false };
 
 function send(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
@@ -109,6 +112,7 @@ function onTelemetry(m) {
   $('state').textContent = role === 'viewer' ? 'VIEW ONLY'
                          : (st === 'SAFE' && m.reason ? 'SAFE (' + m.reason + ')' : st);
   $('state').className = st === 'SAFE' ? 'bad' : (st === 'HOLD' ? 'warn' : 'ok');
+  if (st === 'AUTO' && !m.auto_fresh) $('state').textContent = 'AUTO (no drive_auto)';
   $('claim').style.display = (role === 'viewer' && m.driver_free) ? '' : 'none';
   $('arm').className = armed ? 'armed' : '';
   $('arm').textContent = armed ? 'ARMED' : 'ARM';
@@ -159,6 +163,19 @@ function onTelemetry(m) {
   el.addEventListener('pointermove', (e) => { if (e.pointerId === pid) update(e); });
   for (const t of ['pointerup', 'pointercancel', 'lostpointercapture'])
     el.addEventListener(t, (e) => { if (e.pointerId === pid) reset(); });
+})();
+
+// ---- AUTO: forwarded only while held (dead-man) ----
+(function () {
+  const b = $('auto');
+  let pid = null;
+  b.addEventListener('pointerdown', (e) => {
+    pid = e.pointerId; b.setPointerCapture(pid); cmd.auto = true; b.classList.add('on');
+  });
+  for (const t of ['pointerup', 'pointercancel', 'lostpointercapture'])
+    b.addEventListener(t, (e) => {
+      if (e.pointerId === pid) { pid = null; cmd.auto = false; b.classList.remove('on'); }
+    });
 })();
 
 // ---- buttons / slider ----

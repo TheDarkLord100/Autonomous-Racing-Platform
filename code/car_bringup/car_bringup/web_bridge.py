@@ -16,6 +16,9 @@ States (reported to the browser as "state"):
     SAFE     disarmed, nothing published. ARM is needed to leave this state.
     ARMED    armed, throttle at zero, zero speed published.
     DRIVING  armed and the driver is commanding motion.
+    AUTO     armed and the driver is holding AUTO: drive_auto (e.g. pid_wall) is
+             forwarded to drive, clamped to the speed cap and steering limit.
+             Releasing AUTO or a stale drive_auto stops the car.
     HOLD     armed, but no cmd for cmd_timeout s (link stall): zero speed is published.
              Fresh cmds resume driving, but only after the throttle returns to
              neutral, so the car never lurches off a thumb held during the stall.
@@ -63,6 +66,7 @@ class WebBridge(Node):
         self.max_steering_angle = p('max_steering_angle', 0.35).value
         self.cmd_timeout = p('cmd_timeout', 0.5).value
         self.link_lost_timeout = p('link_lost_timeout', 3.0).value
+        self.auto_timeout = p('auto_timeout', 0.3).value
         self.stop_hold = p('stop_hold', 0.5).value
         self.publish_rate = p('publish_rate', 50.0).value
         self.telemetry_rate = p('telemetry_rate', 10.0).value
@@ -75,6 +79,10 @@ class WebBridge(Node):
         self.armed = False
         self.hold = False          # armed, but commands have stalled
         self.need_neutral = False  # ignore throttle until it returns to ~0
+        self.auto = False          # driver is holding AUTO
+        self.auto_speed = 0.0
+        self.auto_steer = 0.0
+        self.auto_time = 0.0
         self.disarm_reason = 'not armed yet'
         self.throttle = 0.0
         self.steer = 0.0
@@ -93,6 +101,7 @@ class WebBridge(Node):
         self.driver = None
 
         self.pub = self.create_publisher(AckermannDriveStamped, 'drive', 10)
+        self.create_subscription(AckermannDriveStamped, 'drive_auto', self.on_drive_auto, 10)
         self.create_subscription(VescStateStamped, 'sensors/core', self.on_core, 10)
         self.create_subscription(Odometry, 'odom', self.on_odom, 10)
         self.create_subscription(LaserScan, 'scan', self.on_scan, qos_profile_sensor_data)
@@ -114,7 +123,14 @@ class WebBridge(Node):
                     self.need_neutral = True
                     self.throttle, self.steer = 0.0, 0.0
                     self.get_logger().warn('Link stalled: holding at zero speed')
-            if self.armed:
+            if self.armed and self.auto and not self.hold:
+                if now - self.auto_time < self.auto_timeout:
+                    speed = clamp(self.auto_speed, -self.speed_cap, self.speed_cap)
+                    steer = clamp(self.auto_steer, -self.max_steering_angle,
+                                  self.max_steering_angle)
+                else:
+                    speed, steer = 0.0, 0.0  # autonomy not publishing
+            elif self.armed:
                 speed = self.throttle * self.speed_cap
                 steer = self.steer * self.max_steering_angle
             elif now < self.stop_until:
@@ -140,9 +156,16 @@ class WebBridge(Node):
             self.get_logger().warn(f'Disarmed: {reason}')
         self.armed = False
         self.hold = False
+        self.auto = False
         self.disarm_reason = reason
         self.throttle = 0.0
         self.steer = 0.0
+
+    def on_drive_auto(self, msg):
+        with self.lock:
+            self.auto_speed = msg.drive.speed
+            self.auto_steer = msg.drive.steering_angle
+            self.auto_time = time.monotonic()
 
     def on_core(self, msg):
         with self.lock:
@@ -231,6 +254,10 @@ class WebBridge(Node):
                             self.get_logger().info('Link back: release throttle to resume')
                         if self.need_neutral and abs(t) < 0.05:
                             self.need_neutral = False
+                        auto = bool(m.get('auto', False))
+                        if self.auto and not auto:
+                            self.need_neutral = True  # back to manual from a standstill
+                        self.auto = auto
                         self.throttle = 0.0 if self.need_neutral else clamp(t, -1.0, 1.0)
                         self.steer = clamp(s, -1.0, 1.0)
             elif kind == 'speed':
@@ -257,6 +284,8 @@ class WebBridge(Node):
             return 'SAFE'
         if self.hold:
             return 'HOLD'
+        if self.auto:
+            return 'AUTO'
         return 'DRIVING' if self.throttle != 0.0 else 'ARMED'
 
     def telemetry(self):
@@ -267,6 +296,7 @@ class WebBridge(Node):
                 'state': self.state(),
                 'armed': self.armed,
                 'need_neutral': self.armed and self.need_neutral,
+                'auto_fresh': time.monotonic() - self.auto_time < self.auto_timeout,
                 'cmd_age_ms': round(age * 1000) if self.armed else None,
                 'reason': self.disarm_reason,
                 'speed_cap': self.speed_cap,

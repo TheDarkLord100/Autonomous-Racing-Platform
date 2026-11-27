@@ -44,6 +44,7 @@
   button { font: inherit; font-weight: 600; border: 0; border-radius: 10px;
            padding: 14px 22px; color: #fff; touch-action: manipulation; }
   #arm { background: #2a6; } #arm.armed { background: #555; }
+  #auto { background: #a60; touch-action: none; } #auto.on { background: #fb4; color: #000; }
   #estop { background: #d22; padding: 14px 34px; font-size: 18px; }
   #claim { background: #36a; display: none; }
   #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
@@ -75,6 +76,7 @@
   <button id="claim">TAKE CONTROL</button>
   <span>Max <b id="capval">–</b></span>
   <input id="cap" type="range" min="0" max="1.5" step="0.05" value="0.5">
+  <button id="auto">AUTO (hold)</button>
   <button id="estop">STOP</button>
 </div>
 <div id="overlay">Connection lost — car stopped</div>
@@ -85,7 +87,7 @@ const $ = (id) => document.getElementById(id);
 const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') +
               location.host + '/ws' + location.search;   // forwards ?token=
 let ws = null, role = 'viewer', armed = false;
-const cmd = { throttle: 0, steer: 0 };
+const cmd = { throttle: 0, steer: 0, auto: false };
 
 function send(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
@@ -114,6 +116,7 @@ function onTelemetry(m) {
   const st = m.state;   // SAFE | ARMED | DRIVING | HOLD
   $('state').textContent = st === 'SAFE' && m.reason ? 'SAFE (' + m.reason + ')' : st;
   $('state').className = st === 'SAFE' ? 'bad' : (st === 'HOLD' ? 'warn' : 'ok');
+  if (st === 'AUTO' && !m.auto_fresh) $('state').textContent = 'AUTO (no drive_auto)';
   $('arm').className = armed ? 'armed' : '';
   $('arm').textContent = armed ? 'ARMED' : 'ARM';
   $('gap').textContent = m.cmd_age_ms === null ? '–' : m.cmd_age_ms + ' ms';
@@ -164,6 +167,19 @@ function makePad(el, axis, onChange) {
 makePad($('throttle'), 'y', (v) => { cmd.throttle = v; });
 // ROS convention: positive steering angle = left, so pushing right is negative
 makePad($('steer'), 'x', (v) => { cmd.steer = -v; });
+
+// ---- AUTO: forwarded only while held (dead-man) ----
+(function () {
+  const b = $('auto');
+  let pid = null;
+  b.addEventListener('pointerdown', (e) => {
+    pid = e.pointerId; b.setPointerCapture(pid); cmd.auto = true; b.classList.add('on');
+  });
+  for (const t of ['pointerup', 'pointercancel', 'lostpointercapture'])
+    b.addEventListener(t, (e) => {
+      if (e.pointerId === pid) { pid = null; cmd.auto = false; b.classList.remove('on'); }
+    });
+})();
 
 // ---- buttons / slider ----
 $('arm').onclick = () => send({ type: 'arm' });
