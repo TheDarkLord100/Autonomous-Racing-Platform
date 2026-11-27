@@ -23,7 +23,7 @@ stack:                               # what the stack believes
   map: Spielberg/carto/Spielberg_map.yaml
   frame: carto_map
   tf: [0.0, 0.0, -2.879]             # pose of `frame` in the gym map frame (x, y, yaw)
-  raceline: Spielberg/carto/raceline/Spielberg_carto_mincurv_iter.csv
+  raceline: Spielberg/carto/raceline/Spielberg_carto_strong_mincurv.csv
   carto_state: ''                    # carto only: sidecar with pbstream; '' = found next to map
 
 localization:

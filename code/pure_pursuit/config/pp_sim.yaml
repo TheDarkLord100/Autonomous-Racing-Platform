@@ -12,7 +12,7 @@ pure_pursuit:
     lookahead_gain: 0.10
     lookahead_min: 0.5
     lookahead_max: 2.5
-    speed_mode: path
+    speed_mode: constant
     constant_speed: 4.0
     speed_scale: 1.0
     max_speed: 5.0

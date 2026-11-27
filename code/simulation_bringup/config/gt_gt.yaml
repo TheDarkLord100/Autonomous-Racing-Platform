@@ -8,7 +8,7 @@ world:
 stack:
   map: ~/f1tenth_sim_ws/f1tenth_racetracks/Spielberg/Spielberg_map   # same as world -> gym's /map
   frame: map
-  raceline: Spielberg/GT/raceline/Spielberg_GT_mincurv_iter.csv
+  raceline: Spielberg/GT/raceline/Spielberg_GT_mincurv.csv
 localization:
   method: gt
 planning:
